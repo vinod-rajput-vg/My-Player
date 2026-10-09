@@ -53,7 +53,7 @@ class MainActivity : Activity() {
         urlInput = EditText(this).apply {
             hint = "https://example.com/video.m3u8"
             textSize = 18f
-            singleLine = true
+            isSingleLine = true
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
             setPadding(dp(16), dp(12), dp(16), dp(12))
