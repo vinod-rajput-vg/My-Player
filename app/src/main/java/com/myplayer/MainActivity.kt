@@ -22,14 +22,13 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        showSettings()
-        handleIncomingIntent(intent)
+        if (!handleIncomingIntent(intent)) showSettings()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIncomingIntent(intent)
+        if (!handleIncomingIntent(intent)) showSettings()
     }
 
     private fun showSettings() {
@@ -41,7 +40,9 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(40), dp(24), dp(40), dp(24))
             setBackgroundColor(backgroundColor)
-            isFocusableInTouchMode = true
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         root.addView(TextView(this).apply {
             text = "SETTINGS"
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
             letterSpacing = 0.08f
         }, matchWrap())
 
+        var firstFocusableControl: View? = null
         root.addView(sectionTitle("Playback controls"), topMargin())
         root.addView(TextView(this).apply {
             text = "Hide controls after"
@@ -72,6 +74,7 @@ class MainActivity : Activity() {
                 tag = seconds
             }
             timeoutGroup.addView(radio, RadioGroup.LayoutParams(0, dp(52), 1f))
+            if (firstFocusableControl == null) firstFocusableControl = radio
             if (prefs.getInt("hide_timeout", 3) == seconds) timeoutGroup.check(radio.id)
         }
         timeoutGroup.setOnCheckedChangeListener { group, checkedId ->
@@ -107,6 +110,7 @@ class MainActivity : Activity() {
                 }
             }
             root.addView(checkBox, matchWrap())
+            if (firstFocusableControl == null) firstFocusableControl = checkBox
         }
 
         val note = TextView(this).apply {
@@ -117,11 +121,15 @@ class MainActivity : Activity() {
         }
         root.addView(note, matchWrap())
 
-        setContentView(android.widget.ScrollView(this).apply {
+        val scrollView = android.widget.ScrollView(this).apply {
             isFillViewport = true
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             addView(root)
-        })
-        root.requestFocus()
+        }
+        setContentView(scrollView)
+        firstFocusableControl?.post { firstFocusableControl?.requestFocus() }
     }
 
     private fun sectionTitle(value: String) = TextView(this).apply {
@@ -135,8 +143,8 @@ class MainActivity : Activity() {
         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
     ).apply { topMargin = dp(18) }
 
-    private fun handleIncomingIntent(incoming: Intent?) {
-        if (incoming == null) return
+    private fun handleIncomingIntent(incoming: Intent?): Boolean {
+        if (incoming == null) return false
 
         val candidate = when (incoming.action) {
             Intent.ACTION_VIEW -> incoming.dataString
@@ -146,7 +154,7 @@ class MainActivity : Activity() {
             ?.map { it.trim() }
             ?.firstOrNull { it.startsWith("https://", true) || it.startsWith("http://", true) }
 
-        if (candidate.isNullOrBlank()) return
+        if (candidate.isNullOrBlank()) return false
 
         val uri = try {
             Uri.parse(candidate).takeIf {
@@ -156,11 +164,13 @@ class MainActivity : Activity() {
 
         if (uri == null) {
             Toast.makeText(this, "Invalid video URL", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
 
         startActivity(Intent(this, PlayerActivity::class.java)
             .putExtra(PlayerActivity.EXTRA_URL, uri.toString()))
+        finish()
+        return true
     }
 
     private fun matchWrap() = LinearLayout.LayoutParams(
