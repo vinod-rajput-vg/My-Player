@@ -44,6 +44,7 @@ class PlayerActivity : Activity() {
             controllerAutoShow = true
             controllerShowTimeoutMs = prefs.getInt("hide_timeout", 3) * 1000
             controllerHideOnTouch = true
+            setControllerVisibilityListener { _ -> scheduleControllerPreferenceApply() }
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
@@ -87,14 +88,14 @@ class PlayerActivity : Activity() {
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        applyButtonVisibility()
+                        scheduleControllerPreferenceApply()
                     }
                 })
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
                 playerView.post {
-                    applyButtonVisibility()
+                    scheduleControllerPreferenceApply()
                     playerView.requestFocus()
                 }
             }
@@ -111,13 +112,15 @@ class PlayerActivity : Activity() {
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    player?.seekBack()
                     playerView.showController()
+                    player?.seekBack()
+                    scheduleControllerPreferenceApply()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    player?.seekForward()
                     playerView.showController()
+                    player?.seekForward()
+                    scheduleControllerPreferenceApply()
                     true
                 }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
@@ -131,6 +134,8 @@ class PlayerActivity : Activity() {
 
     private fun applyButtonVisibility() {
         if (!::playerView.isInitialized) return
+
+        // Apply preferences to the actual Media3 controller buttons after its layout exists.
         val mapping = listOf(
             androidx.media3.ui.R.id.exo_prev to "previous",
             androidx.media3.ui.R.id.exo_rew to "rewind",
@@ -140,15 +145,41 @@ class PlayerActivity : Activity() {
             androidx.media3.ui.R.id.exo_next to "next"
         )
         mapping.forEach { (viewId, settingKey) ->
-            playerView.findViewById<View?>(viewId)?.visibility =
-                if (prefs.getBoolean("button_$settingKey", true)) View.VISIBLE else View.GONE
+            val button = playerView.findViewById<View?>(viewId) ?: return@forEach
+            val visible = prefs.getBoolean("button_$settingKey", true)
+            button.visibility = if (visible) View.VISIBLE else View.GONE
+            button.isEnabled = visible
+            button.isFocusable = visible
+            button.isClickable = visible
+            // Keep the hidden button from receiving TV remote focus.
+            if (!visible) button.clearFocus()
         }
 
-        listOf(androidx.media3.ui.R.id.exo_position, androidx.media3.ui.R.id.exo_duration).forEach { viewId ->
+        // The default Media3 controller draws a dark bottom scrim behind the time/progress row.
+        // Clear backgrounds on the controller bars and time labels, not just the text widgets.
+        val transparentIds = listOf(
+            androidx.media3.ui.R.id.exo_controller,
+            androidx.media3.ui.R.id.exo_bottom_bar,
+            androidx.media3.ui.R.id.exo_time,
+            androidx.media3.ui.R.id.exo_progress,
+            androidx.media3.ui.R.id.exo_position,
+            androidx.media3.ui.R.id.exo_duration
+        )
+        transparentIds.forEach { viewId ->
             playerView.findViewById<View?>(viewId)?.apply {
                 setBackgroundColor(Color.TRANSPARENT)
-                (parent as? View)?.setBackgroundColor(Color.TRANSPARENT)
+                background?.alpha = 0
             }
+        }
+    }
+
+    private fun scheduleControllerPreferenceApply() {
+        if (!::playerView.isInitialized) return
+        playerView.post {
+            applyButtonVisibility()
+            // Media3 can recreate/update controller views after showing the controls.
+            playerView.findViewById<View?>(androidx.media3.ui.R.id.exo_controller)
+                ?.post { applyButtonVisibility() }
         }
     }
 
