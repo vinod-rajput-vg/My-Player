@@ -45,6 +45,13 @@ class MainActivity : Activity() {
             isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
+        root.addView(ImageView(this).apply {
+            setImageResource(R.drawable.my_player_logo)
+            contentDescription = "My Player logo"
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+        }, LinearLayout.LayoutParams(dp(220), dp(100)))
+
         root.addView(TextView(this).apply {
             text = "SETTINGS"
             textSize = 26f
