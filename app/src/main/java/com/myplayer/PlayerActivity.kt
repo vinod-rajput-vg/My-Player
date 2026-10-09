@@ -3,6 +3,7 @@ package com.myplayer
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.media3.common.MediaItem
@@ -22,6 +23,7 @@ class PlayerActivity : Activity() {
 
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
+    private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +39,8 @@ class PlayerActivity : Activity() {
         playerView = PlayerView(this).apply {
             useController = true
             controllerAutoShow = true
+            controllerShowTimeoutMs = prefs.getInt("hide_timeout", 3) * 1000
+            controllerHideOnTouch = true
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
@@ -50,19 +54,15 @@ class PlayerActivity : Activity() {
             ))
         })
 
-        // Some streaming endpoints redirect to an HLS playlist but don't expose
-        // ".m3u8" in the original URL. Explicit MIME type prevents Media3 from
-        // incorrectly treating those endpoints as ordinary downloadable files.
-        val path = android.net.Uri.parse(url).path.orEmpty()
+        // Some streaming endpoints redirect to an HLS playlist without a .m3u8 suffix.
+        val parsedUri = android.net.Uri.parse(url)
+        val path = parsedUri.path.orEmpty()
         val isHlsEndpoint = path.endsWith(".m3u8", ignoreCase = true) ||
-            (path.endsWith(".php", ignoreCase = true) &&
-                android.net.Uri.parse(url).queryParameterNames.isNotEmpty())
+            (path.endsWith(".php", ignoreCase = true) && parsedUri.queryParameterNames.isNotEmpty())
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
-            .apply {
-                if (isHlsEndpoint) setMimeType(MimeTypes.APPLICATION_M3U8)
-            }
+            .apply { if (isHlsEndpoint) setMimeType(MimeTypes.APPLICATION_M3U8) }
             .build()
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -79,20 +79,38 @@ class PlayerActivity : Activity() {
                 playerView.player = exoPlayer
                 exoPlayer.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
-                        val detail = error.cause?.message
-                            ?: error.message
-                            ?: "Unknown playback error"
-                        Toast.makeText(
-                            this@PlayerActivity,
-                            "Playback failed: $detail",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        val detail = error.cause?.message ?: error.message ?: "Unknown playback error"
+                        Toast.makeText(this@PlayerActivity, "Playback failed: $detail", Toast.LENGTH_LONG).show()
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        applyButtonVisibility()
                     }
                 })
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
+                playerView.post { applyButtonVisibility() }
             }
+    }
+
+    private fun applyButtonVisibility() {
+        if (!::playerView.isInitialized) return
+        val mapping = listOf(
+            "exo_prev" to "previous",
+            "exo_rew" to "rewind",
+            "exo_play" to "play_pause",
+            "exo_pause" to "play_pause",
+            "exo_ffwd" to "fast_forward",
+            "exo_next" to "next"
+        )
+        mapping.forEach { (viewName, settingKey) ->
+            val id = resources.getIdentifier(viewName, "id", packageName)
+            if (id != 0) {
+                playerView.findViewById<View?>(id)?.visibility =
+                    if (prefs.getBoolean("button_$settingKey", true)) View.VISIBLE else View.GONE
+            }
+        }
     }
 
     override fun onStop() {
