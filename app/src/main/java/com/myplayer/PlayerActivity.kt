@@ -111,6 +111,12 @@ class PlayerActivity : Activity() {
                     if (prefs.getBoolean("button_$settingKey", true)) View.VISIBLE else View.GONE
             }
         }
+
+        // Keep playback position and duration labels free of opaque/translucent backgrounds.
+        listOf("exo_position", "exo_duration").forEach { viewName ->
+            val id = resources.getIdentifier(viewName, "id", packageName)
+            if (id != 0) playerView.findViewById<View?>(id)?.setBackgroundColor(Color.TRANSPARENT)
+        }
     }
 
     override fun onStop() {
