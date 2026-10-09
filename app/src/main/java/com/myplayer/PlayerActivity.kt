@@ -177,21 +177,33 @@ class PlayerActivity : Activity() {
             }
         }
 
-        // Permanently remove Media3's built-in rewind/fast-forward controls.
-        // Remote D-pad seeking is handled separately and remains configurable.
-        listOf(
-            androidx.media3.ui.R.id.exo_rew,
-            androidx.media3.ui.R.id.exo_ffwd
-        ).forEach { id ->
-            playerView.findViewById<View?>(id)?.apply {
-                visibility = View.GONE
-                isEnabled = false
-                isFocusable = false
-                isClickable = false
-                clearFocus()
-                (parent as? android.view.ViewGroup)?.visibility = View.GONE
+        // Permanently remove every Media3 rewind/fast-forward variant, including
+        // amount-label wrappers used by some controller layouts (e.g. "Rewind 5 seconds").
+        val seekControlNames = setOf(
+            "exo_rew", "exo_ffwd",
+            "exo_rew_with_amount", "exo_ffwd_with_amount",
+            "exo_rew_container", "exo_ffwd_container",
+            "exo_rew_button", "exo_ffwd_button"
+        )
+        fun hideSeekControls(view: View) {
+            val entryName = if (view.id != View.NO_ID) {
+                runCatching { resources.getResourceEntryName(view.id) }.getOrNull()
+            } else null
+            if (entryName in seekControlNames) {
+                view.visibility = View.GONE
+                view.isEnabled = false
+                view.isFocusable = false
+                view.isClickable = false
+                view.clearFocus()
+                return
+            }
+            if (view is android.view.ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    hideSeekControls(view.getChildAt(index))
+                }
             }
         }
+        hideSeekControls(playerView)
 
         mapping.forEach { (viewId, settingKey) ->
             val button = playerView.findViewById<View?>(viewId) ?: return@forEach
