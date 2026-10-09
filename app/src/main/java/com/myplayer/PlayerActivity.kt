@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.KeyEvent
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.media3.common.MediaItem
@@ -37,6 +38,8 @@ class PlayerActivity : Activity() {
         }
 
         playerView = PlayerView(this).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
             useController = true
             controllerAutoShow = true
             controllerShowTimeoutMs = prefs.getInt("hide_timeout", 3) * 1000
@@ -90,33 +93,68 @@ class PlayerActivity : Activity() {
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
-                playerView.post { applyButtonVisibility() }
+                playerView.post {
+                    applyButtonVisibility()
+                    playerView.requestFocus()
+                }
             }
+
+        playerView.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (playerView.isControllerFullyVisible) {
+                        player?.let { if (it.isPlaying) it.pause() else it.play() }
+                    } else {
+                        playerView.showController()
+                    }
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    player?.seekBack()
+                    playerView.showController()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    player?.seekForward()
+                    playerView.showController()
+                    true
+                }
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                    finishAffinity()
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     private fun applyButtonVisibility() {
         if (!::playerView.isInitialized) return
         val mapping = listOf(
-            "exo_prev" to "previous",
-            "exo_rew" to "rewind",
-            "exo_play" to "play_pause",
-            "exo_pause" to "play_pause",
-            "exo_ffwd" to "fast_forward",
-            "exo_next" to "next"
+            androidx.media3.ui.R.id.exo_prev to "previous",
+            androidx.media3.ui.R.id.exo_rew to "rewind",
+            androidx.media3.ui.R.id.exo_play to "play_pause",
+            androidx.media3.ui.R.id.exo_pause to "play_pause",
+            androidx.media3.ui.R.id.exo_ffwd to "fast_forward",
+            androidx.media3.ui.R.id.exo_next to "next"
         )
-        mapping.forEach { (viewName, settingKey) ->
-            val id = resources.getIdentifier(viewName, "id", packageName)
-            if (id != 0) {
-                playerView.findViewById<View?>(id)?.visibility =
-                    if (prefs.getBoolean("button_$settingKey", true)) View.VISIBLE else View.GONE
-            }
+        mapping.forEach { (viewId, settingKey) ->
+            playerView.findViewById<View?>(viewId)?.visibility =
+                if (prefs.getBoolean("button_$settingKey", true)) View.VISIBLE else View.GONE
         }
 
-        // Keep playback position and duration labels free of opaque/translucent backgrounds.
-        listOf("exo_position", "exo_duration").forEach { viewName ->
-            val id = resources.getIdentifier(viewName, "id", packageName)
-            if (id != 0) playerView.findViewById<View?>(id)?.setBackgroundColor(Color.TRANSPARENT)
+        listOf(androidx.media3.ui.R.id.exo_position, androidx.media3.ui.R.id.exo_duration).forEach { viewId ->
+            playerView.findViewById<View?>(viewId)?.apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                (parent as? View)?.setBackgroundColor(Color.TRANSPARENT)
+            }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        finishAffinity()
     }
 
     override fun onStop() {
