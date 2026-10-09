@@ -156,6 +156,27 @@ class PlayerActivity : Activity() {
             androidx.media3.ui.R.id.exo_pause to "play_pause",
             androidx.media3.ui.R.id.exo_next to "next"
         )
+        // Remove any optional Settings control from Media3's built-in controller.
+        // Different Media3 layouts/versions may use different settings-related IDs.
+        listOf(
+            "exo_settings",
+            "exo_settings_button",
+            "exo_overflow_show",
+            "exo_overflow_hide"
+        ).forEach { name ->
+            val id = resources.getIdentifier(name, "id", packageName)
+                .takeIf { it != 0 }
+                ?: resources.getIdentifier(name, "id", "androidx.media3.ui")
+            if (id != 0) {
+                playerView.findViewById<View?>(id)?.apply {
+                    visibility = View.GONE
+                    isEnabled = false
+                    isFocusable = false
+                    isClickable = false
+                }
+            }
+        }
+
         // Permanently remove Media3's built-in rewind/fast-forward controls.
         // Remote D-pad seeking is handled separately and remains configurable.
         listOf(
