@@ -54,7 +54,7 @@ class PlayerActivity : Activity() {
     private val progressUpdater = object : Runnable {
         override fun run() {
             updateProgress()
-            handler.postDelayed(this, 500)
+            handler.postDelayed(this, 1000)
         }
     }
 
@@ -474,18 +474,21 @@ class PlayerActivity : Activity() {
         val position = p.currentPosition.coerceAtLeast(0L)
         if (!userSeeking) {
             if (duration > 0L) {
-                progress.progress = ((position * 1000L) / duration).toInt().coerceIn(0, 1000)
-                positionLabel.text = formatTime(position)
-                remainingLabel.text = "-" + formatTime((duration - position).coerceAtLeast(0L))
+                val targetProgress = ((position * 1000L) / duration).toInt().coerceIn(0, 1000)
+                if (progress.progress != targetProgress) progress.progress = targetProgress
+                val positionText = formatTime(position)
+                if (positionLabel.text != positionText) positionLabel.text = positionText
+                val remainingText = "-" + formatTime((duration - position).coerceAtLeast(0L))
+                if (remainingLabel.text != remainingText) remainingLabel.text = remainingText
                 progress.isEnabled = true
             } else {
-                progress.progress = 0
-                positionLabel.text = formatTime(position)
-                remainingLabel.text = "LIVE"
+                if (progress.progress != 0) progress.progress = 0
+                val positionText = formatTime(position)
+                if (positionLabel.text != positionText) positionLabel.text = positionText
+                if (remainingLabel.text != "LIVE") remainingLabel.text = "LIVE"
                 progress.isEnabled = false
             }
         }
-        refreshPlayPause()
     }
 
     private fun formatTime(ms: Long): String {
