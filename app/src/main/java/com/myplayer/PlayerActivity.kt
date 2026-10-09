@@ -3,6 +3,7 @@ package com.myplayer
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.Typeface
+import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -90,6 +91,9 @@ class PlayerActivity : Activity() {
         remainingLabel = timeLabel("-00:00")
         progress = SeekBar(this).apply {
             max = 1000
+            progressTintList = ColorStateList.valueOf(Color.rgb(83, 190, 255))
+            progressBackgroundTintList = ColorStateList.valueOf(0x66FFFFFF)
+            thumbTintList = ColorStateList.valueOf(Color.WHITE)
             isFocusable = true
             contentDescription = "Playback progress"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -120,8 +124,8 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        val previousButton = controlButton("⏮", "Previous") {
-            player?.seekToPreviousMediaItem()
+        val previousButton = controlButton("−10s", "Rewind") {
+            seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
             showControls()
         }
         playPauseButton = controlButton("Ⅱ", "Play / Pause") {
@@ -129,15 +133,15 @@ class PlayerActivity : Activity() {
             refreshPlayPause()
             showControls()
         }
-        val nextButton = controlButton("⏭", "Next") {
-            player?.seekToNextMediaItem()
+        val nextButton = controlButton("+10s", "Forward") {
+            seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
             showControls()
         }
         if (prefs.getBoolean("button_previous", true)) buttonRow.addView(previousButton)
         buttonRow.addView(playPauseButton)
         if (prefs.getBoolean("button_next", true)) buttonRow.addView(nextButton)
-        controls.addView(buttonRow, LinearLayout.LayoutParams(-1, dp(56)))
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(132), Gravity.BOTTOM))
+        controls.addView(buttonRow, LinearLayout.LayoutParams(-1, dp(64)))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(148), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
@@ -167,29 +171,44 @@ class PlayerActivity : Activity() {
         }
         root.isFocusableInTouchMode = true
         root.requestFocus()
-        root.setOnKeyListener { _, keyCode, event ->
-            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-            when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    player?.let { if (it.isPlaying) it.pause() else it.play() }
-                    refreshPlayPause(); showControls(); true
-                }
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                    seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L); showControls(); true
-                }
-                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                    seekByRemote(prefs.getInt("seek_interval", 10) * 1000L); showControls(); true
-                }
-                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { showControls(); true }
-                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
-                    if (controls.visibility == View.VISIBLE) { controls.visibility = View.GONE; handler.removeCallbacks(hideControls); true }
-                    else { finishAffinity(); true }
-                }
-                else -> false
-            }
-        }
         playerView.setOnClickListener { showControls() }
         handler.post(progressUpdater)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    player?.let { if (it.isPlaying) it.pause() else it.play() }
+                    refreshPlayPause()
+                    showControls()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
+                    showControls()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
+                    showControls()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    showControls()
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                    if (::controls.isInitialized && controls.visibility == View.VISIBLE) {
+                        controls.visibility = View.GONE
+                        handler.removeCallbacks(hideControls)
+                        playerView.requestFocus()
+                    } else finishAffinity()
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun showControls() {
@@ -205,16 +224,24 @@ class PlayerActivity : Activity() {
         TextView(this).apply {
             text = symbol
             contentDescription = description
-            textSize = 27f
+            textSize = if (description == "Play / Pause") 30f else 19f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             isFocusable = true
             isClickable = true
             setOnClickListener { action() }
-            setBackgroundResource(android.R.drawable.btn_default)
-            background?.alpha = 80
-            layoutParams = LinearLayout.LayoutParams(dp(76), dp(52)).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(if (description == "Play / Pause") 30 else 22).toFloat()
+                setColor(if (description == "Play / Pause") Color.rgb(35, 145, 225) else 0xCC242832.toInt())
+                setStroke(dp(1), if (description == "Play / Pause") Color.rgb(110, 205, 255) else 0x55FFFFFF)
+            }
+            setPadding(dp(10), 0, dp(10), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                if (description == "Play / Pause") dp(66) else dp(82),
+                dp(if (description == "Play / Pause") 58 else 48)
+            ).apply {
                 marginStart = dp(8); marginEnd = dp(8)
             }
         }
@@ -228,7 +255,11 @@ class PlayerActivity : Activity() {
     }
 
     private fun refreshPlayPause() {
-        if (::playPauseButton.isInitialized) playPauseButton.text = if (player?.isPlaying == true) "Ⅱ" else "▶"
+        if (::playPauseButton.isInitialized) {
+            val playing = player?.isPlaying == true
+            playPauseButton.text = if (playing) "Ⅱ" else "▶"
+            playPauseButton.contentDescription = if (playing) "Pause" else "Play"
+        }
     }
 
     private fun updateProgress() {
