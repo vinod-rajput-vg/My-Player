@@ -41,6 +41,10 @@ class PlayerActivity : Activity() {
     private lateinit var positionLabel: TextView
     private lateinit var remainingLabel: TextView
     private lateinit var progress: SeekBar
+    private lateinit var audioButton: TextView
+    private lateinit var aspectButton: TextView
+    private lateinit var previousButton: TextView
+    private lateinit var nextButton: TextView
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
     private var userSeeking = false
@@ -91,7 +95,7 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        val audioButton = controlButton("♫ Audio", "Audio track") {
+        audioButton = controlButton("♫ Audio", "Audio track") {
             val activePlayer = player
             if (activePlayer == null) {
                 Toast.makeText(this, "Player is not ready", Toast.LENGTH_SHORT).show()
@@ -103,7 +107,6 @@ class PlayerActivity : Activity() {
             }
             showControls()
         }
-        lateinit var aspectButton: TextView
         aspectButton = controlButton("⛶ Fit", "Aspect ratio") {
             showAspectRatioMenu(aspectButton)
         }
@@ -152,7 +155,7 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        val previousButton = controlButton("−10s", "Rewind") {
+        previousButton = controlButton("−10s", "Rewind") {
             seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
             showControls()
         }
@@ -161,7 +164,7 @@ class PlayerActivity : Activity() {
             refreshPlayPause()
             showControls()
         }
-        val nextButton = controlButton("+10s", "Forward") {
+        nextButton = controlButton("+10s", "Forward") {
             seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
             showControls()
         }
@@ -253,6 +256,13 @@ class PlayerActivity : Activity() {
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     if (controlsVisible) {
+                        if (currentFocus === progress) {
+                            val step = prefs.getInt("seek_interval", 10) * 1000L
+                            seekByRemote(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -step else step)
+                            showControls()
+                            return true
+                        }
+                        // Let Android TV move focus across the Audio / Aspect and transport buttons.
                         showControls()
                         return super.dispatchKeyEvent(event)
                     }
@@ -276,12 +286,24 @@ class PlayerActivity : Activity() {
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                         (currentFocus === progress || currentFocus === positionLabel || currentFocus === remainingLabel)) {
-                        playPauseButton.requestFocus()
+                        aspectButton.requestFocus()
                         showControls()
                         return true
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        currentFocus !== progress && currentFocus !== positionLabel && currentFocus !== remainingLabel) {
+                        (currentFocus === audioButton || currentFocus === aspectButton)) {
+                        progress.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                        (currentFocus === progress || currentFocus === positionLabel || currentFocus === remainingLabel)) {
+                        playPauseButton.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                        (currentFocus === playPauseButton || currentFocus === previousButton || currentFocus === nextButton)) {
                         progress.requestFocus()
                         showControls()
                         return true
