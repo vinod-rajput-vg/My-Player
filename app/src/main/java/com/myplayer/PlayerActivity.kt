@@ -117,15 +117,11 @@ class PlayerActivity : Activity() {
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    playerView.showController()
-                    player?.seekBack()
-                    scheduleControllerPreferenceApply()
+                    seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    playerView.showController()
-                    player?.seekForward()
-                    scheduleControllerPreferenceApply()
+                    seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
                     true
                 }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
@@ -135,6 +131,21 @@ class PlayerActivity : Activity() {
                 else -> false
             }
         }
+    }
+
+    private fun seekByRemote(offsetMs: Long) {
+        val exoPlayer = player ?: return
+        if (exoPlayer.isCurrentMediaItemLive && !exoPlayer.isCurrentMediaItemSeekable) {
+            playerView.showController()
+            return
+        }
+        val current = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val target = (current + offsetMs).coerceAtLeast(0L)
+        val duration = exoPlayer.duration
+        exoPlayer.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
+        // Do not show transport controls for a seek: only briefly show the progress/timing row.
+        playerView.showController()
+        scheduleControllerPreferenceApply()
     }
 
     private fun applyButtonVisibility() {
