@@ -69,7 +69,11 @@ class PlayerActivity : Activity() {
             isFocusable = true
             isFocusableInTouchMode = true
             useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            resizeMode = when (prefs.getString("aspect_ratio", "fit")) {
+                "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
             keepScreenOn = true
@@ -198,6 +202,9 @@ class PlayerActivity : Activity() {
             else -> null
         }
         val trackParameters = trackSelector.buildUponParameters()
+        prefs.getString("audio_language", null)?.takeIf { it.isNotBlank() }?.let {
+            trackParameters.setPreferredAudioLanguage(it)
+        }
         if (maxVideoSize == null) {
             trackParameters.clearVideoSizeConstraints()
         } else {
@@ -222,6 +229,7 @@ class PlayerActivity : Activity() {
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     updateAudioButtonVisibility()
+                    saveSelectedAudioLanguage(tracks)
                 }
             })
             exo.setMediaItem(mediaItem)
@@ -399,10 +407,26 @@ class PlayerActivity : Activity() {
         if (!shouldShow && hadFocus && ::aspectButton.isInitialized) aspectButton.requestFocus()
     }
 
+    private fun saveSelectedAudioLanguage(tracks: androidx.media3.common.Tracks) {
+        val selectedLanguage = tracks.groups
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { group ->
+                (0 until group.length).filter { group.isTrackSelected(it) }.mapNotNull { index ->
+                    group.getTrackFormat(index).language
+                        ?.takeIf { it.isNotBlank() && !it.equals("und", ignoreCase = true) }
+                }
+            }
+            .firstOrNull()
+        if (selectedLanguage != null) {
+            prefs.edit().putString("audio_language", selectedLanguage).apply()
+        }
+    }
+
     private fun showAspectRatioMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         menu.menu.add("Fit").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            prefs.edit().putString("aspect_ratio", "fit").apply()
             anchor.contentDescription = "Aspect ratio: Fit"
             (anchor as? TextView)?.text = "⛶"
             showControls()
@@ -410,6 +434,7 @@ class PlayerActivity : Activity() {
         }
         menu.menu.add("Fill").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+            prefs.edit().putString("aspect_ratio", "fill").apply()
             anchor.contentDescription = "Aspect ratio: Fill"
             (anchor as? TextView)?.text = "⛶"
             showControls()
@@ -417,6 +442,7 @@ class PlayerActivity : Activity() {
         }
         menu.menu.add("Zoom").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            prefs.edit().putString("aspect_ratio", "zoom").apply()
             anchor.contentDescription = "Aspect ratio: Zoom"
             (anchor as? TextView)?.text = "⛶"
             showControls()
