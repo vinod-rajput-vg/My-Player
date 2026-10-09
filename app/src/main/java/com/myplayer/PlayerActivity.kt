@@ -102,7 +102,8 @@ class PlayerActivity : Activity() {
             }
             showControls()
         }
-        val aspectButton = controlButton("⛶ Fit", "Aspect ratio") {
+        lateinit var aspectButton: TextView
+        aspectButton = controlButton("⛶ Fit", "Aspect ratio") {
             showAspectRatioMenu(aspectButton)
         }
         utilityRow.addView(audioButton)
