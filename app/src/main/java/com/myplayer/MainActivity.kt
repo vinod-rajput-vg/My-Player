@@ -83,6 +83,34 @@ class MainActivity : Activity() {
         }
         root.addView(timeoutGroup, matchWrap())
 
+        root.addView(sectionTitle("Remote seek interval"), topMargin())
+        root.addView(TextView(this).apply {
+            text = "Seconds to skip with Left / Right"
+            textSize = 18f
+            setTextColor(mutedColor)
+        }, matchWrap())
+
+        val seekGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        listOf(5, 10, 15, 30, 60).forEach { seconds ->
+            val radio = android.widget.RadioButton(this).apply {
+                id = View.generateViewId()
+                text = "$seconds sec"
+                textSize = 16f
+                setTextColor(textColor)
+                buttonTintList = android.content.res.ColorStateList.valueOf(textColor)
+                isFocusable = true
+                tag = seconds
+            }
+            seekGroup.addView(radio, RadioGroup.LayoutParams(0, dp(52), 1f))
+            if (prefs.getInt("seek_interval", 10) == seconds) seekGroup.check(radio.id)
+        }
+        seekGroup.setOnCheckedChangeListener { group, checkedId ->
+            (group.findViewById<android.widget.RadioButton>(checkedId)?.tag as? Int)?.let {
+                prefs.edit().putInt("seek_interval", it).apply()
+            }
+        }
+        root.addView(seekGroup, matchWrap())
+
         root.addView(sectionTitle("Buttons shown during playback"), topMargin())
         root.addView(TextView(this).apply {
             text = "Choose which transport buttons are visible."
