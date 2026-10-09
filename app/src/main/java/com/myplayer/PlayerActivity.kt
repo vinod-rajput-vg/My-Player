@@ -44,10 +44,12 @@ class PlayerActivity : Activity() {
             controllerAutoShow = true
             controllerShowTimeoutMs = prefs.getInt("hide_timeout", 3) * 1000
             controllerHideOnTouch = true
-            setControllerVisibilityListener { visibility ->
-                applyControllerVisibility(visibility)
-                scheduleControllerPreferenceApply()
-            }
+            setControllerVisibilityListener(
+                PlayerView.ControllerVisibilityListener { visibility: Int ->
+                    applyControllerVisibility(visibility)
+                    scheduleControllerPreferenceApply()
+                }
+            )
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
