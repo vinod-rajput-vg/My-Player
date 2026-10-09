@@ -22,20 +22,19 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
 
       - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Validate Gradle wrapper exists
         run: |
-          if [ ! -f ./gradlew ]; then
-            echo "::error::Gradle wrapper is missing. Generate and commit gradlew, gradlew.bat, and gradle/wrapper/gradle-wrapper.jar."
-            exit 1
-          fi
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.13
 
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
