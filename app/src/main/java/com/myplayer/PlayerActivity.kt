@@ -40,16 +40,9 @@ class PlayerActivity : Activity() {
         playerView = PlayerView(this).apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            useController = true
-            controllerAutoShow = true
-            controllerShowTimeoutMs = prefs.getInt("hide_timeout", 3) * 1000
-            controllerHideOnTouch = true
-            setControllerVisibilityListener(
-                PlayerView.ControllerVisibilityListener { visibility: Int ->
-                    applyControllerVisibility(visibility)
-                    scheduleControllerPreferenceApply()
-                }
-            )
+            // Disable Media3's controller completely. This prevents any startup flash,
+            // transport buttons, and the white timeline/progress bar from being rendered.
+            useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
@@ -109,11 +102,8 @@ class PlayerActivity : Activity() {
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (playerView.isControllerFullyVisible) {
-                        player?.let { if (it.isPlaying) it.pause() else it.play() }
-                    } else {
-                        playerView.showController()
-                    }
+                    // With Media3 UI disabled, center/enter directly toggles playback.
+                    player?.let { if (it.isPlaying) it.pause() else it.play() }
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -141,9 +131,7 @@ class PlayerActivity : Activity() {
         val target = (current + offsetMs).coerceAtLeast(0L)
         val duration = exoPlayer.duration
         exoPlayer.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-        // Seek silently while the controller is hidden. Do not call showController(),
-        // otherwise Media3 reveals the buttons and timeline on every D-pad press.
-        scheduleControllerPreferenceApply()
+        // Media3 controller is disabled, so remote seeking never reveals UI.
     }
 
     private fun applyButtonVisibility() {
