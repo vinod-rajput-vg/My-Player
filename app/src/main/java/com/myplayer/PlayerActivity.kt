@@ -177,29 +177,70 @@ class PlayerActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
+            val controlsVisible = ::controls.isInitialized && controls.visibility == View.VISIBLE
             when (event.keyCode) {
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (controlsVisible && currentFocus != null &&
+                        (currentFocus === progress || currentFocus?.contentDescription == "Rewind" ||
+                         currentFocus?.contentDescription == "Forward" ||
+                         currentFocus?.contentDescription == "Play / Pause" ||
+                         currentFocus?.contentDescription == "Pause" || currentFocus?.contentDescription == "Play")) {
+                        showControls()
+                        return super.dispatchKeyEvent(event)
+                    }
+                    if (!controlsVisible) {
+                        player?.let { if (it.isPlaying) it.pause() else it.play() }
+                        refreshPlayPause()
+                        showControls()
+                        return true
+                    }
+                    return super.dispatchKeyEvent(event)
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     player?.let { if (it.isPlaying) it.pause() else it.play() }
                     refreshPlayPause()
                     showControls()
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                    seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (controlsVisible) {
+                        showControls()
+                        return super.dispatchKeyEvent(event)
+                    }
+                    seekByRemote(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT)
+                        -prefs.getInt("seek_interval", 10) * 1000L
+                    else prefs.getInt("seek_interval", 10) * 1000L)
                     showControls()
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                    seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
+                KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    seekByRemote(if (event.keyCode == KeyEvent.KEYCODE_MEDIA_REWIND)
+                        -prefs.getInt("seek_interval", 10) * 1000L
+                    else prefs.getInt("seek_interval", 10) * 1000L)
                     showControls()
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    showControls()
-                    return true
+                    if (!controlsVisible) {
+                        showControls()
+                        return true
+                    }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                        (currentFocus === progress || currentFocus === positionLabel || currentFocus === remainingLabel)) {
+                        playPauseButton.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                        currentFocus !== progress && currentFocus !== positionLabel && currentFocus !== remainingLabel) {
+                        progress.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    return super.dispatchKeyEvent(event)
                 }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
-                    if (::controls.isInitialized && controls.visibility == View.VISIBLE) {
+                    if (controlsVisible) {
                         controls.visibility = View.GONE
                         handler.removeCallbacks(hideControls)
                         playerView.requestFocus()
@@ -213,9 +254,13 @@ class PlayerActivity : Activity() {
 
     private fun showControls() {
         if (!::controls.isInitialized) return
+        val wasHidden = controls.visibility != View.VISIBLE
         controls.visibility = View.VISIBLE
         refreshPlayPause()
         updateProgress()
+        if (wasHidden && currentFocus !== progress && currentFocus !== playPauseButton) {
+            progress.requestFocus()
+        }
         handler.removeCallbacks(hideControls)
         if (player?.isPlaying == true) handler.postDelayed(hideControls, controlsHideDelay)
     }
