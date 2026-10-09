@@ -152,12 +152,26 @@ class PlayerActivity : Activity() {
         // Apply preferences to the actual Media3 controller buttons after its layout exists.
         val mapping = listOf(
             androidx.media3.ui.R.id.exo_prev to "previous",
-            androidx.media3.ui.R.id.exo_rew to "rewind",
             androidx.media3.ui.R.id.exo_play to "play_pause",
             androidx.media3.ui.R.id.exo_pause to "play_pause",
-            androidx.media3.ui.R.id.exo_ffwd to "fast_forward",
             androidx.media3.ui.R.id.exo_next to "next"
         )
+        // Permanently remove Media3's built-in rewind/fast-forward controls.
+        // Remote D-pad seeking is handled separately and remains configurable.
+        listOf(
+            androidx.media3.ui.R.id.exo_rew,
+            androidx.media3.ui.R.id.exo_ffwd
+        ).forEach { id ->
+            playerView.findViewById<View?>(id)?.apply {
+                visibility = View.GONE
+                isEnabled = false
+                isFocusable = false
+                isClickable = false
+                clearFocus()
+                (parent as? android.view.ViewGroup)?.visibility = View.GONE
+            }
+        }
+
         mapping.forEach { (viewId, settingKey) ->
             val button = playerView.findViewById<View?>(viewId) ?: return@forEach
             val visible = prefs.getBoolean("button_$settingKey", true)
