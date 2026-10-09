@@ -24,6 +24,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -182,7 +183,28 @@ class PlayerActivity : Activity() {
             .setUserAgent("MyPlayer/1.0 (Android TV)")
         val mediaSourceFactory = DefaultMediaSourceFactory(this).setDataSourceFactory(httpFactory)
 
-        player = ExoPlayer.Builder(this).setMediaSourceFactory(mediaSourceFactory).build().also { exo ->
+        val trackSelector = DefaultTrackSelector(this)
+        val quality = prefs.getString("video_quality", "original") ?: "original"
+        val maxVideoSize = when (quality) {
+            "1080" -> 1920 to 1080
+            "720" -> 1280 to 720
+            "480" -> 854 to 480
+            "360" -> 640 to 360
+            "240" -> 426 to 240
+            else -> null
+        }
+        val trackParameters = trackSelector.buildUponParameters()
+        if (maxVideoSize == null) {
+            trackParameters.clearVideoSizeConstraints()
+        } else {
+            trackParameters.setMaxVideoSize(maxVideoSize.first, maxVideoSize.second)
+        }
+        trackSelector.parameters = trackParameters.build()
+
+        player = ExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().also { exo ->
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
