@@ -135,16 +135,14 @@ class PlayerActivity : Activity() {
 
     private fun seekByRemote(offsetMs: Long) {
         val exoPlayer = player ?: return
-        if (exoPlayer.isCurrentMediaItemLive && !exoPlayer.isCurrentMediaItemSeekable) {
-            playerView.showController()
-            return
-        }
+        // A live stream without seeking support must not reveal the controller.
+        if (exoPlayer.isCurrentMediaItemLive && !exoPlayer.isCurrentMediaItemSeekable) return
         val current = exoPlayer.currentPosition.coerceAtLeast(0L)
         val target = (current + offsetMs).coerceAtLeast(0L)
         val duration = exoPlayer.duration
         exoPlayer.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-        // Do not show transport controls for a seek: only briefly show the progress/timing row.
-        playerView.showController()
+        // Seek silently while the controller is hidden. Do not call showController(),
+        // otherwise Media3 reveals the buttons and timeline on every D-pad press.
         scheduleControllerPreferenceApply()
     }
 
