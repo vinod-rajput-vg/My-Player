@@ -13,9 +13,11 @@ import android.view.KeyEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -25,6 +27,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.TrackSelectionDialogBuilder
 import java.util.Locale
 
 class PlayerActivity : Activity() {
@@ -83,6 +86,29 @@ class PlayerActivity : Activity() {
             isFocusable = false
             visibility = View.GONE
         }
+        val utilityRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        }
+        val audioButton = controlButton("♫ Audio", "Audio track") {
+            val activePlayer = player
+            if (activePlayer == null) {
+                Toast.makeText(this, "Player is not ready", Toast.LENGTH_SHORT).show()
+            } else {
+                TrackSelectionDialogBuilder(this, "Audio track", activePlayer, C.TRACK_TYPE_AUDIO)
+                    .setShowDisableOption(false)
+                    .build()
+                    .show()
+            }
+            showControls()
+        }
+        val aspectButton = controlButton("⛶ Fit", "Aspect ratio") {
+            showAspectRatioMenu(aspectButton)
+        }
+        utilityRow.addView(audioButton)
+        utilityRow.addView(aspectButton)
+        controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
+
         val seekRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -141,7 +167,7 @@ class PlayerActivity : Activity() {
         buttonRow.addView(playPauseButton)
         if (prefs.getBoolean("button_next", true)) buttonRow.addView(nextButton)
         controls.addView(buttonRow, LinearLayout.LayoutParams(-1, dp(64)))
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(148), Gravity.BOTTOM))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(202), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
@@ -290,6 +316,33 @@ class PlayerActivity : Activity() {
                 marginStart = dp(8); marginEnd = dp(8)
             }
         }
+
+    private fun showAspectRatioMenu(anchor: View) {
+        val menu = PopupMenu(this, anchor)
+        menu.menu.add("Fit").setOnMenuItemClickListener {
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            anchor.contentDescription = "Aspect ratio: Fit"
+            (anchor as? TextView)?.text = "⛶ Fit"
+            showControls()
+            true
+        }
+        menu.menu.add("Fill").setOnMenuItemClickListener {
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+            anchor.contentDescription = "Aspect ratio: Fill"
+            (anchor as? TextView)?.text = "⛶ Fill"
+            showControls()
+            true
+        }
+        menu.menu.add("Zoom").setOnMenuItemClickListener {
+            playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            anchor.contentDescription = "Aspect ratio: Zoom"
+            (anchor as? TextView)?.text = "⛶ Zoom"
+            showControls()
+            true
+        }
+        menu.show()
+        showControls()
+    }
 
     private fun timeLabel(value: String) = TextView(this).apply {
         text = value
