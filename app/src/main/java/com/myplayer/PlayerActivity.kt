@@ -95,7 +95,7 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        audioButton = controlButton("♫ Audio", "Audio track") {
+        audioButton = controlButton("♫", "Audio track") {
             val activePlayer = player
             if (activePlayer == null) {
                 Toast.makeText(this, "Player is not ready", Toast.LENGTH_SHORT).show()
@@ -107,7 +107,7 @@ class PlayerActivity : Activity() {
             }
             showControls()
         }
-        aspectButton = controlButton("⛶ Fit", "Aspect ratio") {
+        aspectButton = controlButton("⛶", "Aspect ratio") {
             showAspectRatioMenu(aspectButton)
         }
         utilityRow.addView(audioButton)
@@ -347,11 +347,16 @@ class PlayerActivity : Activity() {
             isFocusable = true
             isClickable = true
             setOnClickListener { action() }
-            background = GradientDrawable().apply {
+            fun buttonBackground(focused: Boolean) = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(if (description == "Play / Pause") 30 else 22).toFloat()
-                setColor(if (description == "Play / Pause") Color.rgb(35, 145, 225) else 0xCC242832.toInt())
-                setStroke(dp(1), if (description == "Play / Pause") Color.rgb(110, 205, 255) else 0x55FFFFFF)
+                setColor(if (focused) Color.rgb(105, 200, 255) else 0xCC242832.toInt())
+                setStroke(dp(2), if (focused) Color.rgb(170, 230, 255) else 0x55FFFFFF)
+            }
+            background = buttonBackground(false)
+            setOnFocusChangeListener { _, hasFocus ->
+                background = buttonBackground(hasFocus)
+                setTextColor(if (hasFocus) Color.rgb(8, 25, 40) else Color.WHITE)
             }
             setPadding(dp(10), 0, dp(10), 0)
             layoutParams = LinearLayout.LayoutParams(
@@ -367,21 +372,21 @@ class PlayerActivity : Activity() {
         menu.menu.add("Fit").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             anchor.contentDescription = "Aspect ratio: Fit"
-            (anchor as? TextView)?.text = "⛶ Fit"
+            (anchor as? TextView)?.text = "⛶"
             showControls()
             true
         }
         menu.menu.add("Fill").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
             anchor.contentDescription = "Aspect ratio: Fill"
-            (anchor as? TextView)?.text = "⛶ Fill"
+            (anchor as? TextView)?.text = "⛶"
             showControls()
             true
         }
         menu.menu.add("Zoom").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             anchor.contentDescription = "Aspect ratio: Zoom"
-            (anchor as? TextView)?.text = "⛶ Zoom"
+            (anchor as? TextView)?.text = "⛶"
             showControls()
             true
         }
