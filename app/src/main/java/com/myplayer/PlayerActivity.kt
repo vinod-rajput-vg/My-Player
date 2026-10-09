@@ -50,11 +50,16 @@ class PlayerActivity : Activity() {
     private var userSeeking = false
     private var controlsHideDelay = 3000L
 
-    private val hideControls = Runnable { if (::controls.isInitialized) controls.visibility = View.GONE }
+    private val hideControls = Runnable {
+        if (::controls.isInitialized) controls.visibility = View.GONE
+        handler.removeCallbacks(progressUpdater)
+    }
     private val progressUpdater = object : Runnable {
         override fun run() {
-            updateProgress()
-            handler.postDelayed(this, 1000)
+            if (::controls.isInitialized && controls.visibility == View.VISIBLE && player != null) {
+                updateProgress()
+                handler.postDelayed(this, 750)
+            }
         }
     }
 
@@ -239,7 +244,6 @@ class PlayerActivity : Activity() {
         root.isFocusableInTouchMode = true
         root.requestFocus()
         playerView.setOnClickListener { showControls() }
-        handler.post(progressUpdater)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -349,6 +353,8 @@ class PlayerActivity : Activity() {
             progress.requestFocus()
         }
         handler.removeCallbacks(hideControls)
+        handler.removeCallbacks(progressUpdater)
+        handler.post(progressUpdater)
         if (player?.isPlaying == true) handler.postDelayed(hideControls, controlsHideDelay)
     }
 
@@ -417,7 +423,7 @@ class PlayerActivity : Activity() {
                 }
             }
             .firstOrNull()
-        if (selectedLanguage != null) {
+        if (selectedLanguage != null && prefs.getString("audio_language", null) != selectedLanguage) {
             prefs.edit().putString("audio_language", selectedLanguage).apply()
         }
     }
