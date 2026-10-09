@@ -44,7 +44,10 @@ class PlayerActivity : Activity() {
             controllerAutoShow = true
             controllerShowTimeoutMs = prefs.getInt("hide_timeout", 3) * 1000
             controllerHideOnTouch = true
-            setControllerVisibilityListener { _ -> scheduleControllerPreferenceApply() }
+            setControllerVisibilityListener { visibility ->
+                applyControllerVisibility(visibility)
+                scheduleControllerPreferenceApply()
+            }
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
@@ -170,6 +173,22 @@ class PlayerActivity : Activity() {
                 setBackgroundColor(Color.TRANSPARENT)
                 background?.alpha = 0
             }
+        }
+    }
+
+    private fun applyControllerVisibility(visibility: Int) {
+        if (!::playerView.isInitialized) return
+        val shown = visibility == View.VISIBLE
+        // Media3 fades the controller; hide the timeline immediately so it cannot linger
+        // onscreen after the transport buttons disappear.
+        listOf(
+            androidx.media3.ui.R.id.exo_progress,
+            androidx.media3.ui.R.id.exo_position,
+            androidx.media3.ui.R.id.exo_duration,
+            androidx.media3.ui.R.id.exo_time
+        ).forEach { id ->
+            playerView.findViewById<View?>(id)?.visibility =
+                if (shown) View.VISIBLE else View.GONE
         }
     }
 
