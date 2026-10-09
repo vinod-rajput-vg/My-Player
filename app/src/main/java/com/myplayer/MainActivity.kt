@@ -120,9 +120,7 @@ class MainActivity : Activity() {
 
         val buttonOptions = listOf(
             "previous" to "Previous",
-            "rewind" to "Rewind 5 seconds",
             "play_pause" to "Play / Pause",
-            "fast_forward" to "Forward 15 seconds",
             "next" to "Next"
         )
         buttonOptions.forEach { (key, label) ->
