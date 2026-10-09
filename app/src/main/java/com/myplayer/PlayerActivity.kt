@@ -112,6 +112,7 @@ class PlayerActivity : Activity() {
         }
         utilityRow.addView(audioButton)
         utilityRow.addView(aspectButton)
+        audioButton.visibility = View.GONE
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
 
         val seekRow = LinearLayout(this).apply {
@@ -215,7 +216,13 @@ class PlayerActivity : Activity() {
                     Toast.makeText(this@PlayerActivity, "Playback failed: $detail", Toast.LENGTH_LONG).show()
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) = refreshPlayPause()
-                override fun onPlaybackStateChanged(playbackState: Int) = updateProgress()
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    updateProgress()
+                    updateAudioButtonVisibility()
+                }
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    updateAudioButtonVisibility()
+                }
             })
             exo.setMediaItem(mediaItem)
             exo.prepare()
@@ -329,6 +336,7 @@ class PlayerActivity : Activity() {
         controls.visibility = View.VISIBLE
         refreshPlayPause()
         updateProgress()
+        updateAudioButtonVisibility()
         if (wasHidden && currentFocus !== progress && currentFocus !== playPauseButton) {
             progress.requestFocus()
         }
@@ -366,6 +374,30 @@ class PlayerActivity : Activity() {
                 marginStart = dp(8); marginEnd = dp(8)
             }
         }
+
+
+    private fun updateAudioButtonVisibility() {
+        if (!::audioButton.isInitialized) return
+        val tracks = player?.currentTracks ?: run {
+            audioButton.visibility = View.GONE
+            return
+        }
+        val languages = tracks.groups
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    val format = group.getTrackFormat(index)
+                    format.language?.takeIf { it.isNotBlank() && !it.equals("und", ignoreCase = true) }
+                        ?: format.label?.takeIf { it.isNotBlank() }
+                }
+            }
+            .map { it.trim().lowercase(Locale.ROOT) }
+            .distinct()
+        val shouldShow = languages.size > 1
+        val hadFocus = currentFocus === audioButton
+        audioButton.visibility = if (shouldShow) View.VISIBLE else View.GONE
+        if (!shouldShow && hadFocus && ::aspectButton.isInitialized) aspectButton.requestFocus()
+    }
 
     private fun showAspectRatioMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
