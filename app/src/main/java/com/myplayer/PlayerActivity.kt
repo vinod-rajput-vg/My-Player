@@ -2,10 +2,18 @@ package com.myplayer
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.view.View
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -16,258 +24,258 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import java.util.Locale
 
 class PlayerActivity : Activity() {
-    companion object {
-        const val EXTRA_URL = "com.myplayer.EXTRA_URL"
-    }
+    companion object { const val EXTRA_URL = "com.myplayer.EXTRA_URL" }
 
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
+    private lateinit var controls: LinearLayout
+    private lateinit var playPauseButton: TextView
+    private lateinit var positionLabel: TextView
+    private lateinit var remainingLabel: TextView
+    private lateinit var progress: SeekBar
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
+    private val handler = Handler(Looper.getMainLooper())
+    private var userSeeking = false
+    private var controlsHideDelay = 3000L
+
+    private val hideControls = Runnable { if (::controls.isInitialized) controls.visibility = View.GONE }
+    private val progressUpdater = object : Runnable {
+        override fun run() {
+            updateProgress()
+            handler.postDelayed(this, 500)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
-
         val url = intent.getStringExtra(EXTRA_URL)
-        if (url.isNullOrBlank()) {
-            finish()
-            return
-        }
+        if (url.isNullOrBlank()) { finish(); return }
 
         playerView = PlayerView(this).apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            // Disable Media3's controller completely. This prevents any startup flash,
-            // transport buttons, and the white timeline/progress bar from being rendered.
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             setBackgroundColor(Color.BLACK)
             keepScreenOn = true
         }
-        setContentView(FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-            addView(playerView, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            ))
-        })
 
-        // Some streaming endpoints redirect to an HLS playlist without a .m3u8 suffix.
+        controlsHideDelay = prefs.getInt("hide_timeout", 3).coerceIn(1, 5) * 1000L
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(playerView, FrameLayout.LayoutParams(-1, -1))
+        }
+        controls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(12), dp(28), dp(14))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.TRANSPARENT, 0xD9000000.toInt())
+            )
+            isFocusable = false
+            visibility = View.GONE
+        }
+        val seekRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        positionLabel = timeLabel("00:00")
+        remainingLabel = timeLabel("-00:00")
+        progress = SeekBar(this).apply {
+            max = 1000
+            isFocusable = true
+            contentDescription = "Playback progress"
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onStartTrackingTouch(seekBar: SeekBar) { userSeeking = true; showControls() }
+                override fun onStopTrackingTouch(seekBar: SeekBar) {
+                    val p = player ?: return
+                    if (p.duration > 0) p.seekTo((p.duration * seekBar.progress / 1000L))
+                    userSeeking = false
+                    showControls()
+                }
+                override fun onProgressChanged(seekBar: SeekBar, value: Int, fromUser: Boolean) {
+                    if (fromUser) {
+                        val duration = player?.duration ?: 0L
+                        if (duration > 0) {
+                            positionLabel.text = formatTime(duration * value / 1000L)
+                            remainingLabel.text = "-" + formatTime(duration - duration * value / 1000L)
+                        }
+                    }
+                }
+            })
+        }
+        seekRow.addView(positionLabel, LinearLayout.LayoutParams(dp(78), -2))
+        seekRow.addView(progress, LinearLayout.LayoutParams(0, dp(42), 1f))
+        seekRow.addView(remainingLabel, LinearLayout.LayoutParams(dp(90), -2))
+        controls.addView(seekRow, LinearLayout.LayoutParams(-1, -2))
+
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val previousButton = controlButton("⏮", "Previous") {
+            player?.seekToPreviousMediaItem()
+            showControls()
+        }
+        playPauseButton = controlButton("Ⅱ", "Play / Pause") {
+            player?.let { if (it.isPlaying) it.pause() else it.play() }
+            refreshPlayPause()
+            showControls()
+        }
+        val nextButton = controlButton("⏭", "Next") {
+            player?.seekToNextMediaItem()
+            showControls()
+        }
+        if (prefs.getBoolean("button_previous", true)) buttonRow.addView(previousButton)
+        buttonRow.addView(playPauseButton)
+        if (prefs.getBoolean("button_next", true)) buttonRow.addView(nextButton)
+        controls.addView(buttonRow, LinearLayout.LayoutParams(-1, dp(56)))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(132), Gravity.BOTTOM))
+        setContentView(root)
+
         val parsedUri = android.net.Uri.parse(url)
         val path = parsedUri.path.orEmpty()
-        val isHlsEndpoint = path.endsWith(".m3u8", ignoreCase = true) ||
-            (path.endsWith(".php", ignoreCase = true) && parsedUri.queryParameterNames.isNotEmpty())
-
-        val mediaItem = MediaItem.Builder()
-            .setUri(url)
-            .apply { if (isHlsEndpoint) setMimeType(MimeTypes.APPLICATION_M3U8) }
-            .build()
-
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        val isHlsEndpoint = path.endsWith(".m3u8", true) ||
+            (path.endsWith(".php", true) && parsedUri.queryParameterNames.isNotEmpty())
+        val mediaItem = MediaItem.Builder().setUri(url)
+            .apply { if (isHlsEndpoint) setMimeType(MimeTypes.APPLICATION_M3U8) }.build()
+        val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent("MyPlayer/1.0 (Android TV)")
+        val mediaSourceFactory = DefaultMediaSourceFactory(this).setDataSourceFactory(httpFactory)
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(httpDataSourceFactory)
-
-        player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .build()
-            .also { exoPlayer ->
-                playerView.player = exoPlayer
-                exoPlayer.addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        val detail = error.cause?.message ?: error.message ?: "Unknown playback error"
-                        Toast.makeText(this@PlayerActivity, "Playback failed: $detail", Toast.LENGTH_LONG).show()
-                    }
-
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        scheduleControllerPreferenceApply()
-                    }
-                })
-                exoPlayer.setMediaItem(mediaItem)
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
-                playerView.post {
-                    scheduleControllerPreferenceApply()
-                    playerView.requestFocus()
+        player = ExoPlayer.Builder(this).setMediaSourceFactory(mediaSourceFactory).build().also { exo ->
+            playerView.player = exo
+            exo.addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    val detail = error.cause?.message ?: error.message ?: "Unknown playback error"
+                    Toast.makeText(this@PlayerActivity, "Playback failed: $detail", Toast.LENGTH_LONG).show()
                 }
-            }
-
-        playerView.setOnKeyListener { _, keyCode, event ->
+                override fun onIsPlayingChanged(isPlaying: Boolean) = refreshPlayPause()
+                override fun onPlaybackStateChanged(playbackState: Int) = updateProgress()
+            })
+            exo.setMediaItem(mediaItem)
+            exo.prepare()
+            exo.playWhenReady = true
+        }
+        root.isFocusableInTouchMode = true
+        root.requestFocus()
+        root.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    // With Media3 UI disabled, center/enter directly toggles playback.
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     player?.let { if (it.isPlaying) it.pause() else it.play() }
-                    true
+                    refreshPlayPause(); showControls(); true
                 }
-                KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
-                    true
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L); showControls(); true
                 }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
-                    true
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    seekByRemote(prefs.getInt("seek_interval", 10) * 1000L); showControls(); true
                 }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { showControls(); true }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
-                    finishAffinity()
-                    true
+                    if (controls.visibility == View.VISIBLE) { controls.visibility = View.GONE; handler.removeCallbacks(hideControls); true }
+                    else { finishAffinity(); true }
                 }
                 else -> false
             }
         }
+        playerView.setOnClickListener { showControls() }
+        handler.post(progressUpdater)
+    }
+
+    private fun showControls() {
+        if (!::controls.isInitialized) return
+        controls.visibility = View.VISIBLE
+        refreshPlayPause()
+        updateProgress()
+        handler.removeCallbacks(hideControls)
+        if (player?.isPlaying == true) handler.postDelayed(hideControls, controlsHideDelay)
+    }
+
+    private fun controlButton(symbol: String, description: String, action: () -> Unit): TextView =
+        TextView(this).apply {
+            text = symbol
+            contentDescription = description
+            textSize = 27f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { action() }
+            setBackgroundResource(android.R.drawable.btn_default)
+            background?.alpha = 80
+            layoutParams = LinearLayout.LayoutParams(dp(76), dp(52)).apply {
+                marginStart = dp(8); marginEnd = dp(8)
+            }
+        }
+
+    private fun timeLabel(value: String) = TextView(this).apply {
+        text = value
+        textSize = 14f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        maxLines = 1
+    }
+
+    private fun refreshPlayPause() {
+        if (::playPauseButton.isInitialized) playPauseButton.text = if (player?.isPlaying == true) "Ⅱ" else "▶"
+    }
+
+    private fun updateProgress() {
+        val p = player ?: return
+        val duration = p.duration
+        val position = p.currentPosition.coerceAtLeast(0L)
+        if (!userSeeking) {
+            if (duration > 0L) {
+                progress.progress = ((position * 1000L) / duration).toInt().coerceIn(0, 1000)
+                positionLabel.text = formatTime(position)
+                remainingLabel.text = "-" + formatTime((duration - position).coerceAtLeast(0L))
+                progress.isEnabled = true
+            } else {
+                progress.progress = 0
+                positionLabel.text = formatTime(position)
+                remainingLabel.text = "LIVE"
+                progress.isEnabled = false
+            }
+        }
+        refreshPlayPause()
+    }
+
+    private fun formatTime(ms: Long): String {
+        val total = (ms / 1000L).coerceAtLeast(0L)
+        val hours = total / 3600
+        val minutes = (total % 3600) / 60
+        val seconds = total % 60
+        return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        else String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 
     private fun seekByRemote(offsetMs: Long) {
-        val exoPlayer = player ?: return
-        // A live stream without seeking support must not reveal the controller.
-        if (exoPlayer.isCurrentMediaItemLive && !exoPlayer.isCurrentMediaItemSeekable) return
-        val current = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val p = player ?: return
+        if (p.isCurrentMediaItemLive && !p.isCurrentMediaItemSeekable) return
+        val current = p.currentPosition.coerceAtLeast(0L)
         val target = (current + offsetMs).coerceAtLeast(0L)
-        val duration = exoPlayer.duration
-        exoPlayer.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
-        // Media3 controller is disabled, so remote seeking never reveals UI.
+        val duration = p.duration
+        p.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
     }
 
-    private fun applyButtonVisibility() {
-        if (!::playerView.isInitialized) return
-
-        // Apply preferences to the actual Media3 controller buttons after its layout exists.
-        val mapping = listOf(
-            androidx.media3.ui.R.id.exo_prev to "previous",
-            androidx.media3.ui.R.id.exo_play to "play_pause",
-            androidx.media3.ui.R.id.exo_pause to "play_pause",
-            androidx.media3.ui.R.id.exo_next to "next"
-        )
-        // Remove any optional Settings control from Media3's built-in controller.
-        // Different Media3 layouts/versions may use different settings-related IDs.
-        listOf(
-            "exo_settings",
-            "exo_settings_button",
-            "exo_overflow_show",
-            "exo_overflow_hide"
-        ).forEach { name ->
-            val id = resources.getIdentifier(name, "id", packageName)
-                .takeIf { it != 0 }
-                ?: resources.getIdentifier(name, "id", "androidx.media3.ui")
-            if (id != 0) {
-                playerView.findViewById<View?>(id)?.apply {
-                    visibility = View.GONE
-                    isEnabled = false
-                    isFocusable = false
-                    isClickable = false
-                }
-            }
-        }
-
-        // Permanently remove every Media3 rewind/fast-forward variant, including
-        // amount-label wrappers used by some controller layouts (e.g. "Rewind 5 seconds").
-        val seekControlNames = setOf(
-            "exo_rew", "exo_ffwd",
-            "exo_rew_with_amount", "exo_ffwd_with_amount",
-            "exo_rew_container", "exo_ffwd_container",
-            "exo_rew_button", "exo_ffwd_button"
-        )
-        fun hideSeekControls(view: View) {
-            val entryName = if (view.id != View.NO_ID) {
-                runCatching { resources.getResourceEntryName(view.id) }.getOrNull()
-            } else null
-            if (entryName in seekControlNames) {
-                view.visibility = View.GONE
-                view.isEnabled = false
-                view.isFocusable = false
-                view.isClickable = false
-                view.clearFocus()
-                return
-            }
-            if (view is android.view.ViewGroup) {
-                for (index in 0 until view.childCount) {
-                    hideSeekControls(view.getChildAt(index))
-                }
-            }
-        }
-        hideSeekControls(playerView)
-
-        mapping.forEach { (viewId, settingKey) ->
-            val button = playerView.findViewById<View?>(viewId) ?: return@forEach
-            val visible = prefs.getBoolean("button_$settingKey", true)
-
-            // Rewind/forward controls can include a wrapper or amount label in Media3's
-            // controller layout. Hide the whole control slot, not only its inner button.
-            val target = if (!visible &&
-                (settingKey == "rewind" || settingKey == "fast_forward") &&
-                button.parent is android.view.ViewGroup
-            ) button.parent as View else button
-
-            target.visibility = if (visible) View.VISIBLE else View.GONE
-            target.isEnabled = visible
-            target.isFocusable = visible
-            target.isClickable = visible
-            button.visibility = if (visible) View.VISIBLE else View.GONE
-            button.isEnabled = visible
-            button.isFocusable = visible
-            button.isClickable = visible
-            if (!visible) {
-                button.clearFocus()
-                target.clearFocus()
-            }
-        }
-
-        // The default Media3 controller draws a dark bottom scrim behind the time/progress row.
-        // Clear backgrounds on the controller bars and time labels, not just the text widgets.
-        val transparentIds = listOf(
-            androidx.media3.ui.R.id.exo_controller,
-            androidx.media3.ui.R.id.exo_bottom_bar,
-            androidx.media3.ui.R.id.exo_time,
-            androidx.media3.ui.R.id.exo_progress,
-            androidx.media3.ui.R.id.exo_position,
-            androidx.media3.ui.R.id.exo_duration
-        )
-        transparentIds.forEach { viewId ->
-            playerView.findViewById<View?>(viewId)?.apply {
-                setBackgroundColor(Color.TRANSPARENT)
-                background?.alpha = 0
-            }
-        }
-    }
-
-    private fun applyControllerVisibility(visibility: Int) {
-        if (!::playerView.isInitialized) return
-        val shown = visibility == View.VISIBLE
-        // Media3 fades the controller; hide the timeline immediately so it cannot linger
-        // onscreen after the transport buttons disappear.
-        listOf(
-            androidx.media3.ui.R.id.exo_progress,
-            androidx.media3.ui.R.id.exo_position,
-            androidx.media3.ui.R.id.exo_duration,
-            androidx.media3.ui.R.id.exo_time
-        ).forEach { id ->
-            playerView.findViewById<View?>(id)?.visibility =
-                if (shown) View.VISIBLE else View.GONE
-        }
-    }
-
-    private fun scheduleControllerPreferenceApply() {
-        if (!::playerView.isInitialized) return
-        playerView.post {
-            applyButtonVisibility()
-            // Media3 can recreate/update controller views after showing the controls.
-            playerView.findViewById<View?>(androidx.media3.ui.R.id.exo_controller)
-                ?.post { applyButtonVisibility() }
-        }
-    }
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        finishAffinity()
-    }
+    override fun onBackPressed() { finishAffinity() }
 
     override fun onStop() {
+        handler.removeCallbacksAndMessages(null)
         if (::playerView.isInitialized) playerView.player = null
         player?.release()
         player = null
