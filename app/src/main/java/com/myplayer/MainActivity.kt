@@ -83,6 +83,43 @@ class MainActivity : Activity() {
         }
         root.addView(timeoutGroup, matchWrap())
 
+        root.addView(sectionTitle("Video quality"), topMargin())
+        root.addView(TextView(this).apply {
+            text = "Maximum playback resolution"
+            textSize = 18f
+            setTextColor(mutedColor)
+        }, matchWrap())
+
+        val qualityGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        val qualityOptions = listOf(
+            "original" to "Original",
+            "1080" to "1080p",
+            "720" to "720p",
+            "480" to "480p",
+            "360" to "360p",
+            "240" to "240p"
+        )
+        qualityOptions.forEach { (value, label) ->
+            val radio = android.widget.RadioButton(this).apply {
+                id = View.generateViewId()
+                text = label
+                textSize = 15f
+                setTextColor(textColor)
+                buttonTintList = android.content.res.ColorStateList.valueOf(textColor)
+                isFocusable = true
+                tag = value
+                setPadding(0, 0, dp(4), 0)
+            }
+            qualityGroup.addView(radio, RadioGroup.LayoutParams(0, dp(52), 1f))
+            if (prefs.getString("video_quality", "original") == value) qualityGroup.check(radio.id)
+        }
+        qualityGroup.setOnCheckedChangeListener { group, checkedId ->
+            (group.findViewById<android.widget.RadioButton>(checkedId)?.tag as? String)?.let {
+                prefs.edit().putString("video_quality", it).apply()
+            }
+        }
+        root.addView(qualityGroup, matchWrap())
+
         root.addView(sectionTitle("Remote seek interval"), topMargin())
         root.addView(TextView(this).apply {
             text = "Seconds to skip with Left / Right"
