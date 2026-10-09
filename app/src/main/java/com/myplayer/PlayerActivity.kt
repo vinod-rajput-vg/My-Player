@@ -286,7 +286,7 @@ class PlayerActivity : Activity() {
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                         (currentFocus === progress || currentFocus === positionLabel || currentFocus === remainingLabel)) {
-                        aspectButton.requestFocus()
+                        (if (audioButton.visibility == View.VISIBLE) audioButton else aspectButton).requestFocus()
                         showControls()
                         return true
                     }
