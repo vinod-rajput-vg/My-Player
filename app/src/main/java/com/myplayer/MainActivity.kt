@@ -6,15 +6,23 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.CheckBox
 
 class MainActivity : Activity() {
+    private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
+    private val textColor = Color.WHITE
+    private val mutedColor = Color.LTGRAY
+    private val backgroundColor = Color.rgb(16, 17, 20)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        showSettingsPlaceholder()
+        showSettings()
         handleIncomingIntent(intent)
     }
 
@@ -24,39 +32,108 @@ class MainActivity : Activity() {
         handleIncomingIntent(intent)
     }
 
-    private fun showSettingsPlaceholder() {
-        window.statusBarColor = Color.rgb(16, 17, 20)
-        window.navigationBarColor = Color.rgb(16, 17, 20)
+    private fun showSettings() {
+        window.statusBarColor = backgroundColor
+        window.navigationBarColor = backgroundColor
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(48), dp(32), dp(48), dp(32))
-            setBackgroundColor(Color.rgb(16, 17, 20))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(40), dp(24), dp(40), dp(24))
+            setBackgroundColor(backgroundColor)
             isFocusableInTouchMode = true
         }
-
-        val title = TextView(this).apply {
+        root.addView(TextView(this).apply {
             text = "SETTINGS"
-            textSize = 28f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
+            textSize = 26f
+            setTextColor(textColor)
             letterSpacing = 0.08f
-        }
-        root.addView(title, matchWrap())
+        }, matchWrap())
 
-        val placeholder = TextView(this).apply {
-            text = "Settings will be added here"
+        root.addView(sectionTitle("Playback controls"), topMargin())
+        root.addView(TextView(this).apply {
+            text = "Hide controls after"
             textSize = 18f
-            setTextColor(Color.LTGRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(20), 0, 0)
-        }
-        root.addView(placeholder, matchWrap())
+            setTextColor(mutedColor)
+        }, matchWrap())
 
-        setContentView(root)
+        val timeoutGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+        }
+        val timeoutOptions = listOf(1, 3, 5)
+        timeoutOptions.forEach { seconds ->
+            val radio = android.widget.RadioButton(this).apply {
+                id = View.generateViewId()
+                text = "$seconds sec"
+                textSize = 17f
+                setTextColor(textColor)
+                buttonTintList = android.content.res.ColorStateList.valueOf(textColor)
+                isFocusable = true
+                tag = seconds
+            }
+            timeoutGroup.addView(radio, RadioGroup.LayoutParams(0, dp(52), 1f))
+            if (prefs.getInt("hide_timeout", 3) == seconds) timeoutGroup.check(radio.id)
+        }
+        timeoutGroup.setOnCheckedChangeListener { group, checkedId ->
+            val selected = group.findViewById<android.widget.RadioButton>(checkedId)
+            (selected?.tag as? Int)?.let { prefs.edit().putInt("hide_timeout", it).apply() }
+        }
+        root.addView(timeoutGroup, matchWrap())
+
+        root.addView(sectionTitle("Buttons shown during playback"), topMargin())
+        root.addView(TextView(this).apply {
+            text = "Choose which transport buttons are visible."
+            textSize = 16f
+            setTextColor(mutedColor)
+        }, matchWrap())
+
+        val buttonOptions = listOf(
+            "previous" to "Previous",
+            "rewind" to "Rewind 5 seconds",
+            "play_pause" to "Play / Pause",
+            "fast_forward" to "Forward 15 seconds",
+            "next" to "Next"
+        )
+        buttonOptions.forEach { (key, label) ->
+            val checkBox = CheckBox(this).apply {
+                text = label
+                textSize = 17f
+                setTextColor(textColor)
+                buttonTintList = android.content.res.ColorStateList.valueOf(textColor)
+                isFocusable = true
+                isChecked = prefs.getBoolean("button_$key", true)
+                setOnCheckedChangeListener { _, checked ->
+                    prefs.edit().putBoolean("button_$key", checked).apply()
+                }
+            }
+            root.addView(checkBox, matchWrap())
+        }
+
+        val note = TextView(this).apply {
+            text = "Changes apply the next time a video is opened."
+            textSize = 14f
+            setTextColor(mutedColor)
+            setPadding(0, dp(12), 0, 0)
+        }
+        root.addView(note, matchWrap())
+
+        setContentView(android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+        })
         root.requestFocus()
     }
+
+    private fun sectionTitle(value: String) = TextView(this).apply {
+        text = value
+        textSize = 20f
+        setTextColor(textColor)
+        setPadding(0, dp(4), 0, dp(8))
+    }
+
+    private fun topMargin() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+    ).apply { topMargin = dp(18) }
 
     private fun handleIncomingIntent(incoming: Intent?) {
         if (incoming == null) return
@@ -75,9 +152,7 @@ class MainActivity : Activity() {
             Uri.parse(candidate).takeIf {
                 it.scheme in listOf("http", "https") && !it.host.isNullOrBlank()
             }
-        } catch (_: Exception) {
-            null
-        }
+        } catch (_: Exception) { null }
 
         if (uri == null) {
             Toast.makeText(this, "Invalid video URL", Toast.LENGTH_SHORT).show()
@@ -89,10 +164,8 @@ class MainActivity : Activity() {
     }
 
     private fun matchWrap() = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
+        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
     )
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
