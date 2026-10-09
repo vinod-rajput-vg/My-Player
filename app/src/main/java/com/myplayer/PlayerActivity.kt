@@ -161,12 +161,26 @@ class PlayerActivity : Activity() {
         mapping.forEach { (viewId, settingKey) ->
             val button = playerView.findViewById<View?>(viewId) ?: return@forEach
             val visible = prefs.getBoolean("button_$settingKey", true)
+
+            // Rewind/forward controls can include a wrapper or amount label in Media3's
+            // controller layout. Hide the whole control slot, not only its inner button.
+            val target = if (!visible &&
+                (settingKey == "rewind" || settingKey == "fast_forward") &&
+                button.parent is android.view.ViewGroup
+            ) button.parent as View else button
+
+            target.visibility = if (visible) View.VISIBLE else View.GONE
+            target.isEnabled = visible
+            target.isFocusable = visible
+            target.isClickable = visible
             button.visibility = if (visible) View.VISIBLE else View.GONE
             button.isEnabled = visible
             button.isFocusable = visible
             button.isClickable = visible
-            // Keep the hidden button from receiving TV remote focus.
-            if (!visible) button.clearFocus()
+            if (!visible) {
+                button.clearFocus()
+                target.clearFocus()
+            }
         }
 
         // The default Media3 controller draws a dark bottom scrim behind the time/progress row.
