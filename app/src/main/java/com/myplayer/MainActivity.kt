@@ -89,7 +89,45 @@ class MainActivity : Activity() {
         root.addView(help, matchWrap())
 
         setContentView(root)
-        urlInput.requestFocus()
+        handleIncomingIntent(intent)
+        if (urlInput.text.isNullOrBlank()) urlInput.requestFocus()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(incoming: Intent?) {
+        if (incoming == null) return
+
+        val incomingUrl = when (incoming.action) {
+            Intent.ACTION_VIEW -> incoming.dataString
+            Intent.ACTION_SEND -> incoming.getStringExtra(Intent.EXTRA_TEXT)
+            else -> null
+        }?.trim()?.let(::extractHttpUrl)
+
+        if (!incomingUrl.isNullOrBlank()) {
+            urlInput.setText(incomingUrl)
+            urlInput.setSelection(urlInput.text.length)
+            playUrl()
+        }
+    }
+
+    private fun extractHttpUrl(text: String): String? {
+        val candidate = text.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("https://", true) || it.startsWith("http://", true) }
+            ?: return null
+
+        return try {
+            Uri.parse(candidate).takeIf {
+                it.scheme in listOf("http", "https") && !it.host.isNullOrBlank()
+            }?.toString()
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun playUrl() {
