@@ -203,9 +203,8 @@ class PlayerActivity : Activity() {
         // so Media3 has a chance to expose every audio PID/program instead of only one.
         val extractorsFactory = DefaultExtractorsFactory()
             .setTsExtractorMode(TsExtractor.MODE_MULTI_PMT)
-        val mediaSourceFactory = DefaultMediaSourceFactory(this)
+        val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
             .setDataSourceFactory(httpFactory)
-            .setExtractorsFactory(extractorsFactory)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 60_000, 2_500, 5_000)
             .setPrioritizeTimeOverSizeThresholds(true)
