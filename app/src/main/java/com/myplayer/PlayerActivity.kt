@@ -222,6 +222,10 @@ class PlayerActivity : Activity() {
             else -> null
         }
         val trackParameters = trackSelector.buildUponParameters()
+            // Do not hide audio renditions just because the device reports channel-count limits.
+            // Let the selector attempt formats that exceed renderer capabilities when possible.
+            .setConstrainAudioChannelCountToDeviceCapabilities(false)
+            .setExceedRendererCapabilitiesIfNecessary(true)
         if (maxVideoSize == null) {
             trackParameters.clearVideoSizeConstraints()
         } else {
@@ -267,6 +271,18 @@ class PlayerActivity : Activity() {
                     updateProgress()
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                    android.util.Log.d(
+                        "MyPlayerAudio",
+                        "Audio groups discovered: ${audioGroups.size}; " +
+                            audioGroups.flatMap { group ->
+                                (0 until group.length).map { index ->
+                                    val format = group.getTrackFormat(index)
+                                    "language=${format.language}, mime=${format.sampleMimeType}, " +
+                                        "channels=${format.channelCount}, supported=${group.isTrackSupported(index)}"
+                                }
+                            }.joinToString(" | ")
+                    )
                 }
             })
             exo.setMediaItem(mediaItem)
@@ -465,7 +481,14 @@ class PlayerActivity : Activity() {
         }
 
 
-    private data class AudioTrackOption(val label: String, val group: androidx.media3.common.TrackGroup?, val trackIndex: Int, val selected: Boolean, val disabled: Boolean = false)
+    private data class AudioTrackOption(
+        val label: String,
+        val group: androidx.media3.common.TrackGroup?,
+        val trackIndex: Int,
+        val selected: Boolean,
+        val disabled: Boolean = false,
+        val supported: Boolean = true
+    )
 
     private fun showAudioTrackDialog() {
         val activePlayer = player ?: return
@@ -473,11 +496,26 @@ class PlayerActivity : Activity() {
         var number = 0
         activePlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { group ->
             for (index in 0 until group.length) {
-                if (!group.isTrackSupported(index)) continue
                 number++
-                val language = group.getTrackFormat(index).language?.let { languageDisplayName(it) }
-                val label = if (language.isNullOrBlank()) "Track $number" else "Track $number - [$language]"
-                options.add(AudioTrackOption(label, group.mediaTrackGroup, index, group.isTrackSelected(index)))
+                val format = group.getTrackFormat(index)
+                val language = format.language?.let { languageDisplayName(it) }
+                val baseLabel = if (language.isNullOrBlank()) "Track $number" else "Track $number - [$language]"
+                val supported = group.isTrackSupported(index)
+                val codec = format.sampleMimeType?.substringAfter('/')?.uppercase(Locale.ROOT)
+                val label = buildString {
+                    append(baseLabel)
+                    if (!codec.isNullOrBlank()) append(" · ").append(codec)
+                    if (!supported) append(" · may not be supported by this device")
+                }
+                options.add(
+                    AudioTrackOption(
+                        label = label,
+                        group = group.mediaTrackGroup,
+                        trackIndex = index,
+                        selected = group.isTrackSelected(index),
+                        supported = supported
+                    )
+                )
             }
         }
         if (options.size == 1) {
@@ -493,6 +531,7 @@ class PlayerActivity : Activity() {
                 textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER_VERTICAL
                 minHeight = dp(54); setPadding(dp(18), dp(8), dp(18), dp(8))
                 isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                alpha = if (option.supported) 1f else 0.72f
                 fun styleRow(focused: Boolean) {
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE; cornerRadius = dp(6).toFloat()
@@ -502,7 +541,10 @@ class PlayerActivity : Activity() {
                 }
                 styleRow(false); setOnFocusChangeListener { _, focused -> styleRow(focused) }
                 setOnClickListener {
-                    val builder = trackSelector.buildUponParameters().clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    val builder = trackSelector.buildUponParameters()
+                        .setConstrainAudioChannelCountToDeviceCapabilities(false)
+                        .setExceedRendererCapabilitiesIfNecessary(true)
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                     if (option.disabled) builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                     else option.group?.let { group ->
                         builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
