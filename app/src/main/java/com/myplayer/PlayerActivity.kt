@@ -54,7 +54,6 @@ class PlayerActivity : Activity() {
     private var userSeeking = false
     private var controlsHideDelay = 3000L
     private var retryAttempt = 0
-    private val maxAutoRetries = 20
     private val retryPlayback = Runnable {
         val activePlayer = player ?: return@Runnable
         activePlayer.playWhenReady = true
@@ -232,12 +231,12 @@ class PlayerActivity : Activity() {
                 override fun onPlayerError(error: PlaybackException) {
                     handler.removeCallbacks(retryPlayback)
                     val retryable = isRetryablePlaybackError(error)
-                    if (retryable && retryAttempt < maxAutoRetries) {
+                    if (retryable) {
                         retryAttempt++
                         val delayMs = 0L // Re-open the same stream URL immediately; no backoff for .ts disconnects
                         Toast.makeText(
                             this@PlayerActivity,
-                            "Connection interrupted. Retrying ${retryAttempt}/$maxAutoRetries…",
+                            "Connection interrupted. Reconnecting…",
                             Toast.LENGTH_SHORT
                         ).show()
                         handler.postDelayed(retryPlayback, delayMs)
