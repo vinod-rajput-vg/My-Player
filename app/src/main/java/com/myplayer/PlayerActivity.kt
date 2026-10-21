@@ -306,15 +306,39 @@ class PlayerActivity : Activity() {
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     if (controlsVisible) {
-                        if (currentFocus === progress) {
-                            val step = prefs.getInt("seek_interval", 10) * 1000L
-                            seekByRemote(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -step else step)
-                            showControls()
-                            return true
+                        val left = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                        val focus = currentFocus
+                        val transportButtons = listOfNotNull(
+                            previousButton.takeIf { it.parent != null },
+                            playPauseButton,
+                            nextButton.takeIf { it.parent != null }
+                        )
+                        when {
+                            focus === progress -> {
+                                val step = prefs.getInt("seek_interval", 10) * 1000L
+                                seekByRemote(if (left) -step else step)
+                            }
+                            focus === audioButton || focus === aspectButton -> {
+                                val utilityButtons = listOfNotNull(
+                                    audioButton.takeIf { it.visibility == View.VISIBLE },
+                                    aspectButton.takeIf { it.visibility == View.VISIBLE }
+                                )
+                                val index = utilityButtons.indexOf(focus)
+                                val target = index + if (left) -1 else 1
+                                if (target in utilityButtons.indices) utilityButtons[target].requestFocus()
+                            }
+                            transportButtons.contains(focus) -> {
+                                val index = transportButtons.indexOf(focus)
+                                val target = index + if (left) -1 else 1
+                                if (target in transportButtons.indices) transportButtons[target].requestFocus()
+                            }
+                            else -> {
+                                // From an unfocused video surface, reveal controls and focus Play/Pause.
+                                playPauseButton.requestFocus()
+                            }
                         }
-                        // Let Android TV move focus across the Audio / Aspect and transport buttons.
                         showControls()
-                        return super.dispatchKeyEvent(event)
+                        return true
                     }
                     seekByRemote(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT)
                         -prefs.getInt("seek_interval", 10) * 1000L
@@ -332,32 +356,36 @@ class PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (!controlsVisible) {
                         showControls()
+                        playPauseButton.requestFocus()
                         return true
                     }
-                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                        (currentFocus === progress || currentFocus === positionLabel || currentFocus === remainingLabel)) {
-                        (if (audioButton.visibility == View.VISIBLE) audioButton else aspectButton).requestFocus()
-                        showControls()
-                        return true
-                    }
+                    val focus = currentFocus
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        (currentFocus === audioButton || currentFocus === aspectButton)) {
+                        (focus === audioButton || focus === aspectButton)) {
                         progress.requestFocus()
                         showControls()
                         return true
                     }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                        (focus === progress || focus === positionLabel || focus === remainingLabel)) {
+                        val target = if (audioButton.visibility == View.VISIBLE) audioButton else aspectButton
+                        target.requestFocus()
+                        showControls()
+                        return true
+                    }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        (currentFocus === progress || currentFocus === positionLabel || currentFocus === remainingLabel)) {
+                        (focus === progress || focus === positionLabel || focus === remainingLabel)) {
                         playPauseButton.requestFocus()
                         showControls()
                         return true
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                        (currentFocus === playPauseButton || currentFocus === previousButton || currentFocus === nextButton)) {
+                        (focus === playPauseButton || focus === previousButton || focus === nextButton)) {
                         progress.requestFocus()
                         showControls()
                         return true
                     }
+                    showControls()
                     return super.dispatchKeyEvent(event)
                 }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
@@ -397,8 +425,9 @@ class PlayerActivity : Activity() {
         refreshPlayPause()
         updateProgress()
         updateAudioButtonVisibility()
-        if (wasHidden && currentFocus !== progress && currentFocus !== playPauseButton) {
-            progress.requestFocus()
+        if (wasHidden) {
+            // Start on a real playback control so D-pad users can operate the player immediately.
+            playPauseButton.requestFocus()
         }
         handler.removeCallbacks(hideControls)
         handler.removeCallbacks(progressUpdater)
