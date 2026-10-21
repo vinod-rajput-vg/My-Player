@@ -53,7 +53,7 @@ class PlayerActivity : Activity() {
     private var userSeeking = false
     private var controlsHideDelay = 3000L
     private var retryAttempt = 0
-    private val maxAutoRetries = 3
+    private val maxAutoRetries = 10
     private val retryPlayback = Runnable {
         val activePlayer = player ?: return@Runnable
         activePlayer.playWhenReady = true
@@ -229,7 +229,7 @@ class PlayerActivity : Activity() {
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable && retryAttempt < maxAutoRetries) {
                         retryAttempt++
-                        val delayMs = 1000L shl (retryAttempt - 1)
+                        val delayMs = (1000L shl (retryAttempt - 1)).coerceAtMost(30_000L)
                         Toast.makeText(
                             this@PlayerActivity,
                             "Connection interrupted. Retrying ${retryAttempt}/$maxAutoRetries…",
