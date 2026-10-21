@@ -481,7 +481,7 @@ class PlayerActivity : Activity() {
                             )
                         )
                         .build()
-                    prefs.edit().putString("audio_language", option.languageTag).apply()
+                    prefs.edit().putString("audio_language", normalizedLanguageTag(option.languageTag) ?: option.languageTag).apply()
                     dialog?.dismiss()
                     showControls()
                 }
@@ -504,8 +504,26 @@ class PlayerActivity : Activity() {
         dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
     }
 
+    private fun normalizedLanguageTag(rawLanguage: String): String? {
+        val raw = rawLanguage.trim().replace('_', '-')
+        if (raw.isBlank() || raw.equals("und", ignoreCase = true)) return null
+        val primary = raw.substringBefore('-').lowercase(Locale.ROOT)
+        val iso639Aliases = mapOf(
+            "eng" to "en", "hin" to "hi", "tam" to "ta", "tel" to "te",
+            "mal" to "ml", "kan" to "kn", "mar" to "mr", "ben" to "bn",
+            "guj" to "gu", "pan" to "pa", "urd" to "ur", "ara" to "ar",
+            "spa" to "es", "fre" to "fr", "fra" to "fr", "ger" to "de",
+            "deu" to "de", "ita" to "it", "por" to "pt", "rus" to "ru",
+            "jpn" to "ja", "kor" to "ko", "chi" to "zh", "zho" to "zh"
+        )
+        val normalizedPrimary = iso639Aliases[primary] ?: primary
+        val suffix = raw.substringAfter('-', "").takeIf { it.isNotBlank() }
+        return if (suffix == null) normalizedPrimary else "$normalizedPrimary-$suffix"
+    }
+
     private fun languageDisplayName(rawLanguage: String): String? {
-        val locale = Locale.forLanguageTag(rawLanguage.trim().replace('_', '-'))
+        val tag = normalizedLanguageTag(rawLanguage) ?: return null
+        val locale = Locale.forLanguageTag(tag)
         val code = locale.language
         if (code.isBlank() || code.equals("und", ignoreCase = true)) return null
         val name = locale.getDisplayLanguage(Locale.ENGLISH).trim()
@@ -547,8 +565,9 @@ class PlayerActivity : Activity() {
                 }
             }
             .firstOrNull()
-        if (selectedLanguage != null && prefs.getString("audio_language", null) != selectedLanguage) {
-            prefs.edit().putString("audio_language", selectedLanguage).apply()
+        val normalizedLanguage = selectedLanguage?.let { normalizedLanguageTag(it) }
+        if (normalizedLanguage != null && prefs.getString("audio_language", null) != normalizedLanguage) {
+            prefs.edit().putString("audio_language", normalizedLanguage).apply()
         }
     }
 
