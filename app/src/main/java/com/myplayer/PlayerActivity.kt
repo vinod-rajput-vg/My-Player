@@ -30,6 +30,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.TsExtractor
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.Locale
@@ -197,7 +199,13 @@ class PlayerActivity : Activity() {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
             .setUserAgent("MyPlayer/1.0 (Android TV)")
-        val mediaSourceFactory = DefaultMediaSourceFactory(this).setDataSourceFactory(httpFactory)
+        // Progressive MPEG-TS can contain multiple programs/PMTs. Use multi-PMT extraction
+        // so Media3 has a chance to expose every audio PID/program instead of only one.
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setTsExtractorMode(TsExtractor.MODE_MULTI_PMT)
+        val mediaSourceFactory = DefaultMediaSourceFactory(this)
+            .setDataSourceFactory(httpFactory)
+            .setExtractorsFactory(extractorsFactory)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 60_000, 2_500, 5_000)
             .setPrioritizeTimeOverSizeThresholds(true)
