@@ -52,6 +52,14 @@ class PlayerActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var userSeeking = false
     private var controlsHideDelay = 3000L
+    private var retryAttempt = 0
+    private val maxAutoRetries = 3
+    private val retryPlayback = Runnable {
+        val activePlayer = player ?: return@Runnable
+        activePlayer.playWhenReady = true
+        activePlayer.prepare()
+    }
+    private val resetRetryCounter = Runnable { retryAttempt = 0 }
 
     private val hideControls = Runnable {
         if (::controls.isInitialized) controls.visibility = View.GONE
@@ -224,10 +232,32 @@ class PlayerActivity : Activity() {
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
-                    val detail = error.cause?.message ?: error.message ?: "Unknown playback error"
-                    Toast.makeText(this@PlayerActivity, "Playback failed: $detail", Toast.LENGTH_LONG).show()
+                    handler.removeCallbacks(retryPlayback)
+                    val retryable = isRetryablePlaybackError(error)
+                    if (retryable && retryAttempt < maxAutoRetries) {
+                        retryAttempt++
+                        val delayMs = 1000L shl (retryAttempt - 1)
+                        Toast.makeText(
+                            this@PlayerActivity,
+                            "Connection interrupted. Retrying ${retryAttempt}/$maxAutoRetries…",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        handler.postDelayed(retryPlayback, delayMs)
+                    } else {
+                        val detail = error.cause?.message ?: error.message ?: "Unknown playback error"
+                        Toast.makeText(
+                            this@PlayerActivity,
+                            if (retryable) "Auto-retry limit reached. Retry playback manually."
+                            else "Playback failed: $detail",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
-                override fun onIsPlayingChanged(isPlaying: Boolean) = refreshPlayPause()
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    refreshPlayPause()
+                    handler.removeCallbacks(resetRetryCounter)
+                    if (isPlaying) handler.postDelayed(resetRetryCounter, 30_000L)
+                }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     updateProgress()
                     updateAudioButtonVisibility()
@@ -340,6 +370,23 @@ class PlayerActivity : Activity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun isRetryablePlaybackError(error: PlaybackException): Boolean {
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+            return true
+        }
+
+        // Retry temporary server failures (HTTP 5xx), but not expired/denied URLs (401/403).
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                return cause.responseCode in 500..599
+            }
+            cause = cause.cause
+        }
+        return false
     }
 
     private fun showControls() {
