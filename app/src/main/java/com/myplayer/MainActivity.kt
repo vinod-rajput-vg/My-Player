@@ -83,6 +83,51 @@ class MainActivity : Activity() {
         }
         root.addView(timeoutGroup, matchWrap())
 
+        root.addView(sectionTitle("Default audio language"), topMargin())
+        root.addView(TextView(this).apply {
+            text = "Preferred language for audio tracks"
+            textSize = 18f
+            setTextColor(mutedColor)
+        }, matchWrap())
+
+        val audioLanguageGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        val audioLanguageOptions = listOf(
+            "auto" to "Auto (stream default)",
+            "hi" to "Hindi",
+            "en" to "English",
+            "ta" to "Tamil",
+            "te" to "Telugu",
+            "ml" to "Malayalam",
+            "kn" to "Kannada",
+            "bn" to "Bengali",
+            "mr" to "Marathi",
+            "ur" to "Urdu"
+        )
+        audioLanguageOptions.forEach { (value, label) ->
+            val radio = android.widget.RadioButton(this).apply {
+                id = View.generateViewId()
+                text = label
+                textSize = 17f
+                setTextColor(textColor)
+                buttonTintList = android.content.res.ColorStateList.valueOf(textColor)
+                isFocusable = true
+                tag = value
+                isChecked = (prefs.getString("default_audio_language", "auto") ?: "auto") == value
+            }
+            audioLanguageGroup.addView(radio, RadioGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
+            ))
+            if (firstFocusableControl == null) firstFocusableControl = radio
+        }
+        audioLanguageGroup.setOnCheckedChangeListener { group, checkedId ->
+            (group.findViewById<android.widget.RadioButton>(checkedId)?.tag as? String)?.let {
+                prefs.edit().putString("default_audio_language", it).apply()
+            }
+        }
+        root.addView(audioLanguageGroup, matchWrap())
+
         root.addView(sectionTitle("Video quality"), topMargin())
         root.addView(TextView(this).apply {
             text = "Maximum playback resolution"
