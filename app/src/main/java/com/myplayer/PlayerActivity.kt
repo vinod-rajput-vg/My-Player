@@ -46,6 +46,7 @@ class PlayerActivity : Activity() {
     private lateinit var remainingLabel: TextView
     private lateinit var progress: SeekBar
     private lateinit var aspectButton: TextView
+    private lateinit var audioButton: TextView
     private lateinit var previousButton: TextView
     private lateinit var nextButton: TextView
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
@@ -115,9 +116,13 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
+        audioButton = controlButton("♫", "Audio track") {
+            showAudioTrackDialog()
+        }
         aspectButton = controlButton("⛶", "Aspect ratio") {
             showAspectRatioMenu(aspectButton)
         }
+        utilityRow.addView(audioButton)
         utilityRow.addView(aspectButton)
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
 
@@ -307,7 +312,12 @@ class PlayerActivity : Activity() {
                                 val step = prefs.getInt("seek_interval", 10) * 1000L
                                 seekByRemote(if (left) -step else step)
                             }
-                            focus === aspectButton -> aspectButton.requestFocus()
+                            focus === audioButton || focus === aspectButton -> {
+                                val utilityButtons = listOf(audioButton, aspectButton)
+                                val index = utilityButtons.indexOfFirst { it === focus }
+                                val target = index + if (left) -1 else 1
+                                if (target in utilityButtons.indices) utilityButtons[target].requestFocus()
+                            }
                             transportButtons.any { it === focus } -> {
                                 val index = transportButtons.indexOfFirst { it === focus }
                                 val target = index + if (left) -1 else 1
@@ -342,14 +352,14 @@ class PlayerActivity : Activity() {
                     }
                     val focus = currentFocus
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        (focus === aspectButton)) {
+                        (focus === audioButton || focus === aspectButton)) {
                         progress.requestFocus()
                         showControls()
                         return true
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                         (focus === progress || focus === positionLabel || focus === remainingLabel)) {
-                        aspectButton.requestFocus()
+                        (if (focus === audioButton) audioButton else aspectButton).requestFocus()
                         showControls()
                         return true
                     }
