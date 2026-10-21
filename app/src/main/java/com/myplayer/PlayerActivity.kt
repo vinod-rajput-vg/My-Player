@@ -1,6 +1,7 @@
 package com.myplayer
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.content.res.ColorStateList
@@ -11,9 +12,11 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -28,13 +31,13 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import androidx.media3.ui.TrackSelectionDialogBuilder
 import java.util.Locale
 
 class PlayerActivity : Activity() {
     companion object { const val EXTRA_URL = "com.myplayer.EXTRA_URL" }
 
     private var player: ExoPlayer? = null
+    private lateinit var trackSelector: DefaultTrackSelector
     private lateinit var playerView: PlayerView
     private lateinit var controls: LinearLayout
     private lateinit var playPauseButton: TextView
@@ -109,10 +112,7 @@ class PlayerActivity : Activity() {
             if (activePlayer == null) {
                 Toast.makeText(this, "Player is not ready", Toast.LENGTH_SHORT).show()
             } else {
-                TrackSelectionDialogBuilder(this, "Audio track", activePlayer, C.TRACK_TYPE_AUDIO)
-                    .setShowDisableOption(false)
-                    .build()
-                    .show()
+                showAudioTrackDialog()
             }
             showControls()
         }
@@ -196,7 +196,7 @@ class PlayerActivity : Activity() {
             .setUserAgent("MyPlayer/1.0 (Android TV)")
         val mediaSourceFactory = DefaultMediaSourceFactory(this).setDataSourceFactory(httpFactory)
 
-        val trackSelector = DefaultTrackSelector(this)
+        trackSelector = DefaultTrackSelector(this)
         val quality = prefs.getString("video_quality", "original") ?: "original"
         val maxVideoSize = when (quality) {
             "1080" -> 1920 to 1080
@@ -390,6 +390,131 @@ class PlayerActivity : Activity() {
         }
 
 
+    private data class AudioLanguageOption(
+        val label: String,
+        val languageTag: String,
+        val mediaTrackGroup: androidx.media3.common.TrackGroup,
+        val trackIndex: Int,
+        val selected: Boolean
+    )
+
+    private fun showAudioTrackDialog() {
+        val activePlayer = player ?: return
+        val options = activePlayer.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    if (!group.isTrackSupported(index)) return@mapNotNull null
+                    val rawLanguage = group.getTrackFormat(index).language
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() && !it.equals("und", ignoreCase = true) }
+                        ?: return@mapNotNull null
+                    val displayName = languageDisplayName(rawLanguage) ?: return@mapNotNull null
+                    AudioLanguageOption(
+                        label = displayName,
+                        languageTag = rawLanguage,
+                        mediaTrackGroup = group.mediaTrackGroup,
+                        trackIndex = index,
+                        selected = group.isTrackSelected(index)
+                    )
+                }
+            }
+            .groupBy { it.label.lowercase(Locale.ROOT) }
+            .values
+            .map { sameLanguage -> sameLanguage.firstOrNull { it.selected } ?: sameLanguage.first() }
+            .sortedBy { it.label }
+
+        if (options.isEmpty()) {
+            Toast.makeText(this, "No language-tagged audio tracks available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isFocusable = false
+            addView(list, ViewGroup.LayoutParams(-1, -2))
+        }
+
+        var dialog: AlertDialog? = null
+        options.forEach { option ->
+            val row = TextView(this).apply {
+                text = if (option.selected) "✓   ${option.label}" else "     ${option.label}"
+                textSize = 20f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER_VERTICAL
+                minHeight = dp(58)
+                setPadding(dp(18), dp(10), dp(18), dp(10))
+                isFocusable = true
+                isFocusableInTouchMode = true
+                isClickable = true
+
+                fun styleRow(focused: Boolean) {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(10).toFloat()
+                        setColor(
+                            if (focused) Color.rgb(42, 69, 105)
+                            else if (option.selected) Color.rgb(29, 43, 62)
+                            else Color.rgb(25, 30, 40)
+                        )
+                        setStroke(
+                            dp(if (focused) 2 else 1),
+                            if (focused) Color.rgb(143, 190, 255)
+                            else if (option.selected) Color.rgb(87, 132, 190)
+                            else Color.rgb(52, 61, 76)
+                        )
+                    }
+                }
+                styleRow(false)
+                setOnFocusChangeListener { _, focused -> styleRow(focused) }
+                setOnClickListener {
+                    trackSelector.parameters = trackSelector.buildUponParameters()
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        .setOverrideForType(
+                            androidx.media3.common.TrackSelectionOverride(
+                                option.mediaTrackGroup,
+                                option.trackIndex
+                            )
+                        )
+                        .build()
+                    prefs.edit().putString("audio_language", option.languageTag).apply()
+                    dialog?.dismiss()
+                    showControls()
+                }
+            }
+            list.addView(row, LinearLayout.LayoutParams(-1, dp(62)).apply {
+                bottomMargin = dp(6)
+            })
+        }
+
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Audio language")
+            .setView(scroll)
+            .setNegativeButton("Close", null)
+            .create()
+        dialog?.setOnShowListener {
+            val selectedIndex = options.indexOfFirst { it.selected }
+            list.getChildAt(if (selectedIndex >= 0) selectedIndex else 0)?.requestFocus()
+        }
+        dialog?.show()
+        dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
+    }
+
+    private fun languageDisplayName(rawLanguage: String): String? {
+        val locale = Locale.forLanguageTag(rawLanguage.trim().replace('_', '-'))
+        val code = locale.language
+        if (code.isBlank() || code.equals("und", ignoreCase = true)) return null
+        val name = locale.getDisplayLanguage(Locale.ENGLISH).trim()
+        if (name.isBlank() || name.equals(code, ignoreCase = true)) return null
+        return name.replaceFirstChar {
+            if (it.isLowerCase()) it.titlecase(Locale.ENGLISH) else it.toString()
+        }
+    }
+
     private fun updateAudioButtonVisibility() {
         if (!::audioButton.isInitialized) return
         val tracks = player?.currentTracks ?: run {
@@ -400,12 +525,11 @@ class PlayerActivity : Activity() {
             .filter { it.type == C.TRACK_TYPE_AUDIO }
             .flatMap { group ->
                 (0 until group.length).mapNotNull { index ->
-                    val format = group.getTrackFormat(index)
-                    format.language?.takeIf { it.isNotBlank() && !it.equals("und", ignoreCase = true) }
-                        ?: format.label?.takeIf { it.isNotBlank() }
+                    if (!group.isTrackSupported(index)) return@mapNotNull null
+                    val language = group.getTrackFormat(index).language ?: return@mapNotNull null
+                    languageDisplayName(language)?.lowercase(Locale.ROOT)
                 }
             }
-            .map { it.trim().lowercase(Locale.ROOT) }
             .distinct()
         val shouldShow = languages.size > 1
         val hadFocus = currentFocus === audioButton
