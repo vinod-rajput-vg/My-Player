@@ -54,7 +54,7 @@ class PlayerActivity : Activity() {
     private var userSeeking = false
     private var controlsHideDelay = 3000L
     private var retryAttempt = 0
-    private val maxAutoRetries = 10
+    private val maxAutoRetries = 20
     private val retryPlayback = Runnable {
         val activePlayer = player ?: return@Runnable
         activePlayer.playWhenReady = true
@@ -234,7 +234,7 @@ class PlayerActivity : Activity() {
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable && retryAttempt < maxAutoRetries) {
                         retryAttempt++
-                        val delayMs = (1000L shl (retryAttempt - 1)).coerceAtMost(30_000L)
+                        val delayMs = 0L // Re-open the same stream URL immediately; no backoff for .ts disconnects
                         Toast.makeText(
                             this@PlayerActivity,
                             "Connection interrupted. Retrying ${retryAttempt}/$maxAutoRetries…",
@@ -393,16 +393,18 @@ class PlayerActivity : Activity() {
 
     private fun isRetryablePlaybackError(error: PlaybackException): Boolean {
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
             return true
         }
 
-        // Retry temporary server failures (HTTP 5xx), but not expired/denied URLs (401/403).
+        // Retry temporary stream read/source interruptions and HTTP 5xx, but not expired/denied URLs (401/403).
         var cause: Throwable? = error
         while (cause != null) {
             if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
                 return cause.responseCode in 500..599
             }
+            if (cause is java.io.IOException) return true
             cause = cause.cause
         }
         return false
