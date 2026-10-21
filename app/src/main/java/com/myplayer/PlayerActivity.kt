@@ -44,7 +44,6 @@ class PlayerActivity : Activity() {
     private lateinit var positionLabel: TextView
     private lateinit var remainingLabel: TextView
     private lateinit var progress: SeekBar
-    private lateinit var audioButton: TextView
     private lateinit var aspectButton: TextView
     private lateinit var previousButton: TextView
     private lateinit var nextButton: TextView
@@ -115,21 +114,10 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        audioButton = controlButton("♫", "Audio track") {
-            val activePlayer = player
-            if (activePlayer == null) {
-                Toast.makeText(this, "Player is not ready", Toast.LENGTH_SHORT).show()
-            } else {
-                showAudioTrackDialog()
-            }
-            showControls()
-        }
         aspectButton = controlButton("⛶", "Aspect ratio") {
             showAspectRatioMenu(aspectButton)
         }
-        utilityRow.addView(audioButton)
         utilityRow.addView(aspectButton)
-        audioButton.visibility = View.GONE
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
 
         val seekRow = LinearLayout(this).apply {
@@ -215,10 +203,6 @@ class PlayerActivity : Activity() {
             else -> null
         }
         val trackParameters = trackSelector.buildUponParameters()
-        prefs.getString("default_audio_language", "auto")
-            ?.takeIf { it.isNotBlank() && !it.equals("auto", ignoreCase = true) }
-            ?.let { normalizedLanguageTag(it) ?: it }
-            ?.let { trackParameters.setPreferredAudioLanguage(it) }
         if (maxVideoSize == null) {
             trackParameters.clearVideoSizeConstraints()
         } else {
@@ -261,11 +245,8 @@ class PlayerActivity : Activity() {
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     updateProgress()
-                    updateAudioButtonVisibility()
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                    updateAudioButtonVisibility()
-                    saveSelectedAudioLanguage(tracks)
                 }
             })
             exo.setMediaItem(mediaItem)
@@ -318,15 +299,7 @@ class PlayerActivity : Activity() {
                                 val step = prefs.getInt("seek_interval", 10) * 1000L
                                 seekByRemote(if (left) -step else step)
                             }
-                            focus === audioButton || focus === aspectButton -> {
-                                val utilityButtons = listOfNotNull(
-                                    audioButton.takeIf { it.visibility == View.VISIBLE },
-                                    aspectButton.takeIf { it.visibility == View.VISIBLE }
-                                )
-                                val index = utilityButtons.indexOfFirst { it === focus }
-                                val target = index + if (left) -1 else 1
-                                if (target in utilityButtons.indices) utilityButtons[target].requestFocus()
-                            }
+                            focus === aspectButton -> aspectButton.requestFocus()
                             transportButtons.any { it === focus } -> {
                                 val index = transportButtons.indexOfFirst { it === focus }
                                 val target = index + if (left) -1 else 1
@@ -361,15 +334,14 @@ class PlayerActivity : Activity() {
                     }
                     val focus = currentFocus
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        (focus === audioButton || focus === aspectButton)) {
+                        (focus === aspectButton)) {
                         progress.requestFocus()
                         showControls()
                         return true
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                         (focus === progress || focus === positionLabel || focus === remainingLabel)) {
-                        val target = if (audioButton.visibility == View.VISIBLE) audioButton else aspectButton
-                        target.requestFocus()
+                        aspectButton.requestFocus()
                         showControls()
                         return true
                     }
@@ -424,7 +396,6 @@ class PlayerActivity : Activity() {
         controls.visibility = View.VISIBLE
         refreshPlayPause()
         updateProgress()
-        updateAudioButtonVisibility()
         if (wasHidden) {
             // Start on a real playback control so D-pad users can operate the player immediately.
             playPauseButton.requestFocus()
@@ -467,187 +438,77 @@ class PlayerActivity : Activity() {
         }
 
 
-    private data class AudioLanguageOption(
-        val label: String,
-        val languageTag: String,
-        val mediaTrackGroup: androidx.media3.common.TrackGroup,
-        val trackIndex: Int,
-        val selected: Boolean
-    )
+    private data class AudioTrackOption(val label: String, val group: androidx.media3.common.TrackGroup?, val trackIndex: Int, val selected: Boolean, val disabled: Boolean = false)
 
     private fun showAudioTrackDialog() {
         val activePlayer = player ?: return
-        val options = activePlayer.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_AUDIO }
-            .flatMap { group ->
-                (0 until group.length).mapNotNull { index ->
-                    if (!group.isTrackSupported(index)) return@mapNotNull null
-                    val rawLanguage = group.getTrackFormat(index).language
-                        ?.trim()
-                        ?.takeIf { it.isNotEmpty() && !it.equals("und", ignoreCase = true) }
-                        ?: return@mapNotNull null
-                    val displayName = languageDisplayName(rawLanguage) ?: return@mapNotNull null
-                    AudioLanguageOption(
-                        label = displayName,
-                        languageTag = rawLanguage,
-                        mediaTrackGroup = group.mediaTrackGroup,
-                        trackIndex = index,
-                        selected = group.isTrackSelected(index)
-                    )
-                }
+        val options = mutableListOf(AudioTrackOption("Disable", null, -1, false, true))
+        var number = 0
+        activePlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { group ->
+            for (index in 0 until group.length) {
+                if (!group.isTrackSupported(index)) continue
+                number++
+                val language = group.getTrackFormat(index).language?.let { languageDisplayName(it) }
+                val label = if (language.isNullOrBlank()) "Track $number" else "Track $number - [$language]"
+                options.add(AudioTrackOption(label, group.mediaTrackGroup, index, group.isTrackSelected(index)))
             }
-            .groupBy { it.label.lowercase(Locale.ROOT) }
-            .values
-            .map { sameLanguage -> sameLanguage.firstOrNull { it.selected } ?: sameLanguage.first() }
-            .sortedBy { it.label }
-
-        if (options.isEmpty()) {
-            Toast.makeText(this, "No language-tagged audio tracks available", Toast.LENGTH_SHORT).show()
+        }
+        if (options.size == 1) {
+            Toast.makeText(this, "No audio tracks available", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-        }
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            isFocusable = false
-            addView(list, ViewGroup.LayoutParams(-1, -2))
-        }
-
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), dp(4)) }
+        val scroll = ScrollView(this).apply { isFillViewport = true; isFocusable = false; addView(list, ViewGroup.LayoutParams(-1, -2)) }
         var dialog: AlertDialog? = null
         options.forEach { option ->
             val row = TextView(this).apply {
-                text = if (option.selected) "✓   ${option.label}" else "     ${option.label}"
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER_VERTICAL
-                minHeight = dp(58)
-                setPadding(dp(18), dp(10), dp(18), dp(10))
-                isFocusable = true
-                isFocusableInTouchMode = true
-                isClickable = true
-
+                text = (if (option.selected) "●   " else "     ") + option.label
+                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER_VERTICAL
+                minHeight = dp(54); setPadding(dp(18), dp(8), dp(18), dp(8))
+                isFocusable = true; isFocusableInTouchMode = true; isClickable = true
                 fun styleRow(focused: Boolean) {
                     background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = dp(10).toFloat()
-                        setColor(
-                            if (focused) Color.rgb(42, 69, 105)
-                            else if (option.selected) Color.rgb(29, 43, 62)
-                            else Color.rgb(25, 30, 40)
-                        )
-                        setStroke(
-                            dp(if (focused) 2 else 1),
-                            if (focused) Color.rgb(143, 190, 255)
-                            else if (option.selected) Color.rgb(87, 132, 190)
-                            else Color.rgb(52, 61, 76)
-                        )
+                        shape = GradientDrawable.RECTANGLE; cornerRadius = dp(6).toFloat()
+                        setColor(if (focused) Color.rgb(42,112,174) else if (option.selected) Color.rgb(35,57,78) else Color.rgb(28,30,34))
+                        setStroke(dp(if (focused) 2 else 1), if (focused) Color.rgb(143,190,255) else Color.rgb(70,75,82))
                     }
                 }
-                styleRow(false)
-                setOnFocusChangeListener { _, focused -> styleRow(focused) }
+                styleRow(false); setOnFocusChangeListener { _, focused -> styleRow(focused) }
                 setOnClickListener {
-                    trackSelector.parameters = trackSelector.buildUponParameters()
-                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                        .setOverrideForType(
-                            androidx.media3.common.TrackSelectionOverride(
-                                option.mediaTrackGroup,
-                                option.trackIndex
-                            )
-                        )
-                        .build()
-                    prefs.edit().putString("audio_language", normalizedLanguageTag(option.languageTag) ?: option.languageTag).apply()
-                    dialog?.dismiss()
-                    showControls()
+                    val builder = trackSelector.buildUponParameters().clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    if (option.disabled) builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                    else option.group?.let { group ->
+                        builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        builder.setOverrideForType(androidx.media3.common.TrackSelectionOverride(group, option.trackIndex))
+                    }
+                    trackSelector.parameters = builder.build()
+                    dialog?.dismiss(); showControls()
                 }
             }
-            list.addView(row, LinearLayout.LayoutParams(-1, dp(62)).apply {
-                bottomMargin = dp(6)
-            })
+            list.addView(row, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(4) })
         }
-
-        dialog = AlertDialog.Builder(this)
-            .setTitle("Audio language")
-            .setView(scroll)
-            .setNegativeButton("Close", null)
-            .create()
-        dialog?.setOnShowListener {
-            val selectedIndex = options.indexOfFirst { it.selected }
-            list.getChildAt(if (selectedIndex >= 0) selectedIndex else 0)?.requestFocus()
-        }
-        dialog?.show()
-        dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
+        dialog = AlertDialog.Builder(this).setTitle("Audio Track").setView(scroll).setNegativeButton("Close", null).create()
+        dialog?.setOnShowListener { val index = options.indexOfFirst { it.selected }; list.getChildAt(if (index >= 0) index else 1)?.requestFocus() }
+        dialog?.show(); dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
     }
 
     private fun normalizedLanguageTag(rawLanguage: String): String? {
         val raw = rawLanguage.trim().replace('_', '-')
         if (raw.isBlank() || raw.equals("und", ignoreCase = true)) return null
         val primary = raw.substringBefore('-').lowercase(Locale.ROOT)
-        val iso639Aliases = mapOf(
-            "eng" to "en", "hin" to "hi", "tam" to "ta", "tel" to "te",
-            "mal" to "ml", "kan" to "kn", "mar" to "mr", "ben" to "bn",
-            "guj" to "gu", "pan" to "pa", "urd" to "ur", "ara" to "ar",
-            "spa" to "es", "fre" to "fr", "fra" to "fr", "ger" to "de",
-            "deu" to "de", "ita" to "it", "por" to "pt", "rus" to "ru",
-            "jpn" to "ja", "kor" to "ko", "chi" to "zh", "zho" to "zh"
-        )
-        val normalizedPrimary = iso639Aliases[primary] ?: primary
+        val aliases = mapOf("eng" to "en", "hin" to "hi", "tam" to "ta", "tel" to "te", "mal" to "ml", "kan" to "kn", "mar" to "mr", "ben" to "bn", "urd" to "ur", "guj" to "gu", "pan" to "pa", "ara" to "ar", "spa" to "es", "fre" to "fr", "fra" to "fr", "ger" to "de", "deu" to "de", "ita" to "it", "por" to "pt", "rus" to "ru", "jpn" to "ja", "kor" to "ko", "chi" to "zh", "zho" to "zh")
+        val normalized = aliases[primary] ?: primary
         val suffix = raw.substringAfter('-', "").takeIf { it.isNotBlank() }
-        return if (suffix == null) normalizedPrimary else "$normalizedPrimary-$suffix"
+        return if (suffix == null) normalized else "$normalized-$suffix"
     }
 
     private fun languageDisplayName(rawLanguage: String): String? {
         val tag = normalizedLanguageTag(rawLanguage) ?: return null
-        val locale = Locale.forLanguageTag(tag)
-        val code = locale.language
+        val locale = Locale.forLanguageTag(tag); val code = locale.language
         if (code.isBlank() || code.equals("und", ignoreCase = true)) return null
         val name = locale.getDisplayLanguage(Locale.ENGLISH).trim()
         if (name.isBlank() || name.equals(code, ignoreCase = true)) return null
-        return name.replaceFirstChar {
-            if (it.isLowerCase()) it.titlecase(Locale.ENGLISH) else it.toString()
-        }
-    }
-
-    private fun updateAudioButtonVisibility() {
-        if (!::audioButton.isInitialized) return
-        val tracks = player?.currentTracks ?: run {
-            audioButton.visibility = View.GONE
-            return
-        }
-        val languages = tracks.groups
-            .filter { it.type == C.TRACK_TYPE_AUDIO }
-            .flatMap { group ->
-                (0 until group.length).mapNotNull { index ->
-                    if (!group.isTrackSupported(index)) return@mapNotNull null
-                    val language = group.getTrackFormat(index).language ?: return@mapNotNull null
-                    languageDisplayName(language)?.lowercase(Locale.ROOT)
-                }
-            }
-            .distinct()
-        // Keep the audio control available even when the stream exposes only one
-        // language-tagged track; a default language can still be configured in Settings.
-        val shouldShow = languages.isNotEmpty()
-        val hadFocus = currentFocus === audioButton
-        audioButton.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        if (!shouldShow && hadFocus && ::aspectButton.isInitialized) aspectButton.requestFocus()
-    }
-
-    private fun saveSelectedAudioLanguage(tracks: androidx.media3.common.Tracks) {
-        val selectedLanguage = tracks.groups
-            .filter { it.type == C.TRACK_TYPE_AUDIO }
-            .flatMap { group ->
-                (0 until group.length).filter { group.isTrackSelected(it) }.mapNotNull { index ->
-                    group.getTrackFormat(index).language
-                        ?.takeIf { it.isNotBlank() && !it.equals("und", ignoreCase = true) }
-                }
-            }
-            .firstOrNull()
-        val normalizedLanguage = selectedLanguage?.let { normalizedLanguageTag(it) }
-        if (normalizedLanguage != null && prefs.getString("last_audio_language", null) != normalizedLanguage) {
-            prefs.edit().putString("last_audio_language", normalizedLanguage).apply()
-        }
+        return name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ENGLISH) else it.toString() }
     }
 
     private fun showAspectRatioMenu(anchor: View) {
