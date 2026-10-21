@@ -215,9 +215,10 @@ class PlayerActivity : Activity() {
             else -> null
         }
         val trackParameters = trackSelector.buildUponParameters()
-        prefs.getString("audio_language", null)?.takeIf { it.isNotBlank() }?.let {
-            trackParameters.setPreferredAudioLanguage(it)
-        }
+        prefs.getString("default_audio_language", "auto")
+            ?.takeIf { it.isNotBlank() && !it.equals("auto", ignoreCase = true) }
+            ?.let { normalizedLanguageTag(it) ?: it }
+            ?.let { trackParameters.setPreferredAudioLanguage(it) }
         if (maxVideoSize == null) {
             trackParameters.clearVideoSizeConstraints()
         } else {
@@ -596,7 +597,9 @@ class PlayerActivity : Activity() {
                 }
             }
             .distinct()
-        val shouldShow = languages.size > 1
+        // Keep the audio control available even when the stream exposes only one
+        // language-tagged track; a default language can still be configured in Settings.
+        val shouldShow = languages.isNotEmpty()
         val hadFocus = currentFocus === audioButton
         audioButton.visibility = if (shouldShow) View.VISIBLE else View.GONE
         if (!shouldShow && hadFocus && ::aspectButton.isInitialized) aspectButton.requestFocus()
@@ -613,8 +616,8 @@ class PlayerActivity : Activity() {
             }
             .firstOrNull()
         val normalizedLanguage = selectedLanguage?.let { normalizedLanguageTag(it) }
-        if (normalizedLanguage != null && prefs.getString("audio_language", null) != normalizedLanguage) {
-            prefs.edit().putString("audio_language", normalizedLanguage).apply()
+        if (normalizedLanguage != null && prefs.getString("last_audio_language", null) != normalizedLanguage) {
+            prefs.edit().putString("last_audio_language", normalizedLanguage).apply()
         }
     }
 
