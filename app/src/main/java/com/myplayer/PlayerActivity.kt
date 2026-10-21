@@ -323,12 +323,12 @@ class PlayerActivity : Activity() {
                                     audioButton.takeIf { it.visibility == View.VISIBLE },
                                     aspectButton.takeIf { it.visibility == View.VISIBLE }
                                 )
-                                val index = utilityButtons.indexOf(focus)
+                                val index = utilityButtons.indexOfFirst { it === focus }
                                 val target = index + if (left) -1 else 1
                                 if (target in utilityButtons.indices) utilityButtons[target].requestFocus()
                             }
-                            transportButtons.contains(focus) -> {
-                                val index = transportButtons.indexOf(focus)
+                            transportButtons.any { it === focus } -> {
+                                val index = transportButtons.indexOfFirst { it === focus }
                                 val target = index + if (left) -1 else 1
                                 if (target in transportButtons.indices) transportButtons[target].requestFocus()
                             }
