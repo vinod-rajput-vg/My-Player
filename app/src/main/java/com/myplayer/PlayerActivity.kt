@@ -56,10 +56,15 @@ class PlayerActivity : Activity() {
     private var userSeeking = false
     private var controlsHideDelay = 3000L
     private var retryAttempt = 0
+    private var isTsStream = false
+    private var retryFromBeginning = false
+    private var audioPreferenceApplied = false
     private val retryPlayback = Runnable {
         val activePlayer = player ?: return@Runnable
-        activePlayer.playWhenReady = true
+        if (retryFromBeginning) activePlayer.seekToDefaultPosition()
+        retryFromBeginning = false
         activePlayer.prepare()
+        activePlayer.playWhenReady = true
     }
     private val resetRetryCounter = Runnable { retryAttempt = 0 }
 
@@ -192,6 +197,12 @@ class PlayerActivity : Activity() {
         val path = parsedUri.path.orEmpty()
         val isHlsEndpoint = path.endsWith(".m3u8", true) ||
             (path.endsWith(".php", true) && parsedUri.queryParameterNames.isNotEmpty())
+        isTsStream = !isHlsEndpoint && (
+            path.endsWith(".ts", true) ||
+            path.endsWith(".mpegts", true) ||
+            path.endsWith(".m2ts", true)
+        )
+        audioPreferenceApplied = false
         val mediaItem = MediaItem.Builder().setUri(url)
             .apply { if (isHlsEndpoint) setMimeType(MimeTypes.APPLICATION_M3U8) }.build()
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -268,6 +279,13 @@ class PlayerActivity : Activity() {
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     updateProgress()
+                    // Some live/progressive .ts endpoints close the response after ~48 seconds
+                    // without raising a Player error. Re-open the same stream instead of stopping.
+                    if (playbackState == Player.STATE_ENDED && isTsStream && exo.playWhenReady) {
+                        handler.removeCallbacks(retryPlayback)
+                        retryFromBeginning = true
+                        handler.postDelayed(retryPlayback, 250L)
+                    }
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -282,6 +300,7 @@ class PlayerActivity : Activity() {
                                 }
                             }.joinToString(" | ")
                     )
+                    applySavedAudioPreference(audioGroups)
                 }
             })
             exo.setMediaItem(mediaItem)
@@ -550,6 +569,21 @@ class PlayerActivity : Activity() {
                         builder.setOverrideForType(androidx.media3.common.TrackSelectionOverride(group, option.trackIndex))
                     }
                     trackSelector.parameters = builder.build()
+                    if (option.disabled) {
+                        prefs.edit().putBoolean("audio_track_disabled", true).apply()
+                    } else {
+                        val format = option.group?.let { selectedGroup ->
+                            (0 until selectedGroup.length).firstOrNull { it == option.trackIndex }
+                                ?.let { selectedGroup.getFormat(it) }
+                        }
+                        prefs.edit()
+                            .putBoolean("audio_track_disabled", false)
+                            .putString("audio_track_language", format?.language.orEmpty())
+                            .putString("audio_track_mime", format?.sampleMimeType.orEmpty())
+                            .putInt("audio_track_index", option.trackIndex)
+                            .apply()
+                    }
+                    audioPreferenceApplied = true
                     dialog?.dismiss(); showControls()
                 }
             }
@@ -558,6 +592,49 @@ class PlayerActivity : Activity() {
         dialog = AlertDialog.Builder(this).setTitle("Audio Track").setView(scroll).setNegativeButton("Close", null).create()
         dialog?.setOnShowListener { val index = options.indexOfFirst { it.selected }; list.getChildAt(if (index >= 0) index else 1)?.requestFocus() }
         dialog?.show(); dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
+    }
+
+    private fun applySavedAudioPreference(
+        audioGroups: List<androidx.media3.common.Tracks.Group>
+    ) {
+        if (audioPreferenceApplied || audioGroups.isEmpty()) return
+        val savedLanguage = prefs.getString("audio_track_language", "").orEmpty()
+        val savedMime = prefs.getString("audio_track_mime", "").orEmpty()
+        val savedIndex = prefs.getInt("audio_track_index", -1)
+        val disableAudio = prefs.getBoolean("audio_track_disabled", false)
+        val builder = trackSelector.buildUponParameters()
+            .setConstrainAudioChannelCountToDeviceCapabilities(false)
+            .setExceedRendererCapabilitiesIfNecessary(true)
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+
+        if (disableAudio) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            trackSelector.parameters = builder.build()
+            audioPreferenceApplied = true
+            return
+        }
+
+        val savedTag = normalizedLanguageTag(savedLanguage)
+        val candidates = audioGroups.flatMap { group ->
+            (0 until group.length).map { index ->
+                Triple(group, index, group.getTrackFormat(index))
+            }
+        }
+        val match = candidates.firstOrNull { (_, _, format) ->
+            savedTag != null && normalizedLanguageTag(format.language.orEmpty()) == savedTag
+        } ?: candidates.firstOrNull { (_, _, format) ->
+            savedMime.isNotBlank() && format.sampleMimeType == savedMime
+        } ?: candidates.firstOrNull { (_, index, _) -> savedIndex >= 0 && index == savedIndex }
+
+        if (match != null) {
+            val (group, index, _) = match
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            builder.setOverrideForType(
+                androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, index)
+            )
+            trackSelector.parameters = builder.build()
+            audioPreferenceApplied = true
+        }
     }
 
     private fun normalizedLanguageTag(rawLanguage: String): String? {
