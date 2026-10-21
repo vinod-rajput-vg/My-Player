@@ -279,12 +279,12 @@ class PlayerActivity : Activity() {
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     updateProgress()
-                    // Some live/progressive .ts endpoints close the response after ~48 seconds
-                    // without raising a Player error. Re-open the same stream instead of stopping.
+                    // A progressive .ts response may end normally when the server closes it.
+                    // Re-open the same URL immediately while playback is still requested.
                     if (playbackState == Player.STATE_ENDED && isTsStream && exo.playWhenReady) {
                         handler.removeCallbacks(retryPlayback)
                         retryFromBeginning = true
-                        handler.postDelayed(retryPlayback, 250L)
+                        handler.post(retryPlayback)
                     }
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
