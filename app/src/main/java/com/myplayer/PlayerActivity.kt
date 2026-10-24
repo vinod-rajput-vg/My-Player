@@ -197,14 +197,20 @@ class PlayerActivity : Activity() {
         val path = parsedUri.path.orEmpty()
         val isHlsEndpoint = path.endsWith(".m3u8", true) ||
             (path.endsWith(".php", true) && parsedUri.queryParameterNames.isNotEmpty())
-        isTsStream = !isHlsEndpoint && (
+        val isDashEndpoint = path.endsWith(".mpd", true)
+        isTsStream = !isHlsEndpoint && !isDashEndpoint && (
             path.endsWith(".ts", true) ||
             path.endsWith(".mpegts", true) ||
             path.endsWith(".m2ts", true)
         )
         audioPreferenceApplied = false
         val mediaItem = MediaItem.Builder().setUri(url)
-            .apply { if (isHlsEndpoint) setMimeType(MimeTypes.APPLICATION_M3U8) }.build()
+            .apply {
+                when {
+                    isHlsEndpoint -> setMimeType(MimeTypes.APPLICATION_M3U8)
+                    isDashEndpoint -> setMimeType(MimeTypes.APPLICATION_MPD)
+                }
+            }.build()
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
