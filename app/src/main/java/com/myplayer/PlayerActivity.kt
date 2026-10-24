@@ -258,6 +258,12 @@ class PlayerActivity : Activity() {
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
+                    android.util.Log.e(
+                        "MyPlayerDASH",
+                        "Playback error: code=${error.errorCode}, name=${error.errorCodeName}, " +
+                            "message=${error.message}, cause=${error.cause?.javaClass?.name}: ${error.cause?.message}",
+                        error
+                    )
                     handler.removeCallbacks(retryPlayback)
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable) {
@@ -285,6 +291,16 @@ class PlayerActivity : Activity() {
                     if (isPlaying) handler.postDelayed(resetRetryCounter, 30_000L)
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    android.util.Log.d(
+                        "MyPlayerDASH",
+                        "Playback state=${when (playbackState) {
+                            Player.STATE_IDLE -> "IDLE"
+                            Player.STATE_BUFFERING -> "BUFFERING"
+                            Player.STATE_READY -> "READY"
+                            Player.STATE_ENDED -> "ENDED"
+                            else -> playbackState.toString()
+                        }}; playWhenReady=${exo.playWhenReady}; isPlaying=${exo.isPlaying}"
+                    )
                     updateProgress()
                     // A progressive .ts response may end normally when the server closes it.
                     // Re-open the same URL immediately while playback is still requested.
@@ -295,6 +311,20 @@ class PlayerActivity : Activity() {
                     }
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    val videoGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                    android.util.Log.d(
+                        "MyPlayerDASH",
+                        "Video groups discovered: ${videoGroups.size}; " +
+                            videoGroups.flatMap { group ->
+                                (0 until group.length).map { index ->
+                                    val format = group.getTrackFormat(index)
+                                    "mime=${format.sampleMimeType}, codecs=${format.codecs}, " +
+                                        "size=${format.width}x${format.height}, " +
+                                        "supported=${group.isTrackSupported(index)}, " +
+                                        "support=${group.getTrackSupport(index)}"
+                                }
+                            }.joinToString(" | ")
+                    )
                     val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
                     android.util.Log.d(
                         "MyPlayerAudio",
