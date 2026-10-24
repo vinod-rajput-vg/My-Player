@@ -28,6 +28,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -252,8 +253,17 @@ class PlayerActivity : Activity() {
         trackSelector.parameters = trackParameters.build()
 
         val renderersFactory = DefaultRenderersFactory(this)
-            // Some Android TV emulators (including BlueStacks) expose hardware decoders
-            // that fail on particular streams. Let Media3 try another available decoder.
+            // Emulator GPU/video paths can fail despite successful audio playback. Prefer
+            // Android's Google software AVC decoder when present; keep other decoders available.
+            .setMediaCodecSelector(MediaCodecSelector { mimeType, secure, tunneling ->
+                val decoders = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
+                if (mimeType == MimeTypes.VIDEO_H264) {
+                    decoders.sortedBy { info ->
+                        if (info.name.contains("google", ignoreCase = true) ||
+                            info.name.contains("c2.android.avc", ignoreCase = true)) 0 else 1
+                    }
+                } else decoders
+            })
             .setEnableDecoderFallback(true)
         player = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector)
@@ -289,6 +299,16 @@ class PlayerActivity : Activity() {
                             Toast.LENGTH_LONG
                         ).show()
                     }
+                }
+                override fun onRenderedFirstFrame() {
+                    android.util.Log.i("MyPlayerDASH", "First video frame rendered successfully")
+                }
+                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                    android.util.Log.i(
+                        "MyPlayerDASH",
+                        "Video size=${videoSize.width}x${videoSize.height}; " +
+                            "pixelRatio=${videoSize.pixelWidthHeightRatio}"
+                    )
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     refreshPlayPause()
