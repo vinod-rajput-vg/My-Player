@@ -27,6 +27,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -309,7 +310,13 @@ class PlayerActivity : Activity() {
                     applySavedAudioPreference(audioGroups)
                 }
             })
-            exo.setMediaItem(mediaItem)
+            // Route DASH playlists through Media3's DASH source explicitly. This avoids
+            // relying on URL/content-type inference for .mpd streams served with generic headers.
+            if (isDashEndpoint) {
+                exo.setMediaSource(DashMediaSource.Factory(httpFactory).createMediaSource(mediaItem))
+            } else {
+                exo.setMediaItem(mediaItem)
+            }
             exo.prepare()
             exo.playWhenReady = true
         }
