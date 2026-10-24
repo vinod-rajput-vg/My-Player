@@ -405,12 +405,25 @@ class PlayerActivity : Activity() {
                         return true
                     }
                     if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                        (focus === progress || focus === playPauseButton ||
-                         focus === previousButton || focus === nextButton)) {
-                        audioButton.requestFocus()
+                        (focus === progress || focus === positionLabel || focus === remainingLabel)) {
+                        (if (focus === audioButton) audioButton else aspectButton).requestFocus()
                         showControls()
                         return true
                     }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                        (focus === progress || focus === positionLabel || focus === remainingLabel)) {
+                        playPauseButton.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                        (focus === playPauseButton || focus === previousButton || focus === nextButton)) {
+                        progress.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    showControls()
+                    return super.dispatchKeyEvent(event)
                 }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
                     if (controlsVisible) {
