@@ -27,6 +27,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -250,7 +251,11 @@ class PlayerActivity : Activity() {
         }
         trackSelector.parameters = trackParameters.build()
 
-        player = ExoPlayer.Builder(this)
+        val renderersFactory = DefaultRenderersFactory(this)
+            // Some Android TV emulators (including BlueStacks) expose hardware decoders
+            // that fail on particular streams. Let Media3 try another available decoder.
+            .setEnableDecoderFallback(true)
+        player = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
@@ -320,6 +325,7 @@ class PlayerActivity : Activity() {
                                     val format = group.getTrackFormat(index)
                                     "mime=${format.sampleMimeType}, codecs=${format.codecs}, " +
                                         "size=${format.width}x${format.height}, " +
+                                        "selected=${group.isTrackSelected(index)}, " +
                                         "supported=${group.isTrackSupported(index)}, " +
                                         "support=${group.getTrackSupport(index)}"
                                 }
