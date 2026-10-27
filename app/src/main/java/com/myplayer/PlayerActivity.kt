@@ -179,7 +179,7 @@ class PlayerActivity : Activity() {
         // Timeline stays below the playback and utility buttons.
         controls.addView(timelineRow, LinearLayout.LayoutParams(-1, dp(38)))
 
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(92), Gravity.BOTTOM))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
