@@ -383,20 +383,25 @@ class PlayerActivity : Activity() {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!controlsVisible) {
-                        togglePlayback()
-                        updatePlayPauseButton()
+                        // First OK only reveals controls. It must not pause or stop playback.
                         showControls()
-                        timeline.requestFocus()
+                        playPauseButton.requestFocus()
                         return true
                     }
-                    // OK on timeline toggles playback; it does not stop/release the player.
                     if (currentFocus === timeline) {
+                        // OK on the timeline reveals/focuses playback controls without toggling.
+                        playPauseButton.requestFocus()
+                        showControls()
+                        return true
+                    }
+                    if (currentFocus === playPauseButton) {
                         togglePlayback()
                         updatePlayPauseButton()
                         showControls()
-                        timeline.requestFocus()
+                        playPauseButton.requestFocus()
                         return true
                     }
+                    // OK on Audio/Aspect keeps playback running and leaves the menu action to the view.
                     return super.dispatchKeyEvent(event)
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
