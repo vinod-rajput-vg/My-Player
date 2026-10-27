@@ -580,7 +580,7 @@ showControls()
         if (options.isEmpty()) {
             Toast.makeText(
                 this,
-                "Hindi/English audio tracks are not available in this stream",
+                "Audio Tracks Are Not Available In This Stream",
                 Toast.LENGTH_LONG
             ).show()
             return
