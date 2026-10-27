@@ -246,7 +246,6 @@ class PlayerActivity : Activity() {
                             else -> playbackState.toString()
                         }}; playWhenReady=${exo.playWhenReady}; isPlaying=${exo.isPlaying}"
                     )
-                    updateProgress()
                     // A progressive .ts response may end normally when the server closes it.
                     // Re-open the same URL immediately while playback is still requested.
                     if (playbackState == Player.STATE_ENDED && isTsStream && exo.playWhenReady && !playbackReleased) {
@@ -478,8 +477,9 @@ class PlayerActivity : Activity() {
                         "en" -> "English"
                         else -> null
                     } ?: continue
-                    if (languageTracks.containsKey(languageCode)) continue
-                    languageTracks[languageCode] = AudioTrackOption(
+                    val code = languageCode ?: continue
+                    if (languageTracks.containsKey(code)) continue
+                    languageTracks[code] = AudioTrackOption(
                         label = label,
                         group = group.mediaTrackGroup,
                         trackIndex = index,
