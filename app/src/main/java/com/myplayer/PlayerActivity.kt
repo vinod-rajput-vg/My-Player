@@ -79,6 +79,7 @@ class PlayerActivity : Activity() {
 
     private val hideControls = Runnable {
         if (::controls.isInitialized) controls.visibility = View.GONE
+        handler.removeCallbacks(progressUpdater)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -427,6 +428,7 @@ class PlayerActivity : Activity() {
                     if (controlsVisible) {
                         controls.visibility = View.GONE
                         handler.removeCallbacks(hideControls)
+                        handler.removeCallbacks(progressUpdater)
                         playerView.requestFocus()
                     } else finishAffinity()
                     return true
@@ -474,7 +476,7 @@ class PlayerActivity : Activity() {
         handler.removeCallbacks(progressUpdater)
         updateProgress()
         handler.postDelayed(progressUpdater, 250L)
-        if (player?.isPlaying == true) handler.postDelayed(hideControls, controlsHideDelay)
+        handler.postDelayed(hideControls, controlsHideDelay)
     }
 
     private fun controlButton(symbol: String, description: String, action: () -> Unit): TextView =
