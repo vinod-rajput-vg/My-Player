@@ -16,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.C
@@ -45,6 +46,9 @@ class PlayerActivity : Activity() {
     private lateinit var controls: LinearLayout
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
+    private lateinit var timeline: SeekBar
+    private lateinit var positionLabel: TextView
+    private lateinit var durationLabel: TextView
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
     private var userSeeking = false
@@ -64,6 +68,14 @@ class PlayerActivity : Activity() {
         activePlayer.playWhenReady = true
     }
     private val resetRetryCounter = Runnable { retryAttempt = 0 }
+    private val progressUpdater = object : Runnable {
+        override fun run() {
+            updateProgress()
+            if (!playbackReleased && ::controls.isInitialized && controls.visibility == View.VISIBLE) {
+                handler.postDelayed(this, 500L)
+            }
+        }
+    }
 
     private val hideControls = Runnable {
         if (::controls.isInitialized) controls.visibility = View.GONE
@@ -118,11 +130,54 @@ class PlayerActivity : Activity() {
         aspectButton = controlButton("⛶", "Aspect ratio") {
             showAspectRatioMenu(aspectButton)
         }
+        val timelineRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        positionLabel = TextView(this).apply {
+            text = "00:00"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        durationLabel = TextView(this).apply {
+            text = "LIVE"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }
+        timeline = SeekBar(this).apply {
+            max = 1000
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    if (fromUser) positionLabel.text = formatTime((player?.duration ?: 0L) * progress / 1000L)
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar) {
+                    userSeeking = true
+                    handler.removeCallbacks(progressUpdater)
+                }
+                override fun onStopTrackingTouch(seekBar: SeekBar) {
+                    val active = player
+                    if (active != null && active.duration > 0L) active.seekTo(active.duration * seekBar.progress / 1000L)
+                    userSeeking = false
+                    updateProgress()
+                    if (controls.visibility == View.VISIBLE) handler.postDelayed(progressUpdater, 500L)
+                }
+            })
+        }
+        timelineRow.addView(positionLabel, LinearLayout.LayoutParams(dp(48), -2))
+        timelineRow.addView(timeline, LinearLayout.LayoutParams(0, dp(36), 1f).apply {
+            marginStart = dp(8); marginEnd = dp(8)
+        })
+        timelineRow.addView(durationLabel, LinearLayout.LayoutParams(dp(48), -2))
+        controls.addView(timelineRow, LinearLayout.LayoutParams(-1, dp(38)))
         utilityRow.addView(audioButton)
         utilityRow.addView(aspectButton)
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
 
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(80), Gravity.BOTTOM))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(104), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
@@ -416,6 +471,9 @@ class PlayerActivity : Activity() {
             audioButton.requestFocus()
         }
         handler.removeCallbacks(hideControls)
+        handler.removeCallbacks(progressUpdater)
+        updateProgress()
+        handler.postDelayed(progressUpdater, 250L)
         if (player?.isPlaying == true) handler.postDelayed(hideControls, controlsHideDelay)
     }
 
@@ -697,6 +755,30 @@ class PlayerActivity : Activity() {
         p.seekTo(if (duration > 0L) target.coerceAtMost(duration) else target)
     }
 
+    private fun updateProgress() {
+        val active = player ?: return
+        if (!::timeline.isInitialized || userSeeking) return
+        val duration = active.duration
+        val position = active.currentPosition.coerceAtLeast(0L)
+        if (duration > 0L && duration != C.TIME_UNSET) {
+            timeline.progress = (position * 1000L / duration).toInt().coerceIn(0, 1000)
+            durationLabel.text = formatTime(duration)
+        } else {
+            timeline.progress = 0
+            durationLabel.text = if (active.isCurrentMediaItemLive) "LIVE" else "--:--"
+        }
+        positionLabel.text = formatTime(position)
+    }
+
+    private fun formatTime(timeMs: Long): String {
+        val totalSeconds = (timeMs / 1000L).coerceAtLeast(0L)
+        val hours = totalSeconds / 3600L
+        val minutes = (totalSeconds % 3600L) / 60L
+        val seconds = totalSeconds % 60L
+        return if (hours > 0L) String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds)
+        else String.format(Locale.ROOT, "%02d:%02d", minutes, seconds)
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     @Suppress("DEPRECATION")
@@ -706,6 +788,7 @@ class PlayerActivity : Activity() {
         // Keep the player instance so returning to this activity does not leave a blank surface.
         // Pause playback while the activity is not visible; release it in onDestroy.
         handler.removeCallbacks(hideControls)
+        handler.removeCallbacks(progressUpdater)
         handler.removeCallbacks(retryPlayback)
         player?.pause()
         super.onStop()
