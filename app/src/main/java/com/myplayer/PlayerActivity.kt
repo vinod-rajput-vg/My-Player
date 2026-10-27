@@ -46,7 +46,6 @@ class PlayerActivity : Activity() {
     private lateinit var controls: LinearLayout
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
-    private lateinit var playPauseButton: TextView
     private lateinit var timeline: SeekBar
     private lateinit var positionLabel: TextView
     private lateinit var durationLabel: TextView
@@ -126,11 +125,6 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
-        playPauseButton = controlButton("Ⅱ", "Play / Pause") {
-            togglePlayback()
-            updatePlayPauseButton()
-            showControls()
-        }
         audioButton = controlButton("♫", "Audio track") {
             showAudioTrackDialog()
         }
@@ -179,14 +173,13 @@ class PlayerActivity : Activity() {
             marginStart = dp(8); marginEnd = dp(8)
         })
         timelineRow.addView(durationLabel, LinearLayout.LayoutParams(dp(48), -2))
-        utilityRow.addView(playPauseButton)
         utilityRow.addView(audioButton)
         utilityRow.addView(aspectButton)
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
         // Timeline stays below the playback and utility buttons.
         controls.addView(timelineRow, LinearLayout.LayoutParams(-1, dp(38)))
 
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(92), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
@@ -385,20 +378,14 @@ class PlayerActivity : Activity() {
                     if (!controlsVisible) {
                         // First OK only reveals controls. It must not pause or stop playback.
                         showControls()
-                        playPauseButton.requestFocus()
+                        timeline.requestFocus()
                         return true
                     }
                     if (currentFocus === timeline) {
-                        // OK on the timeline reveals/focuses playback controls without toggling.
-                        playPauseButton.requestFocus()
-                        showControls()
-                        return true
-                    }
-                    if (currentFocus === playPauseButton) {
+                        // OK on the timeline toggles playback; no separate play/pause button is needed.
                         togglePlayback()
-                        updatePlayPauseButton()
                         showControls()
-                        playPauseButton.requestFocus()
+                        timeline.requestFocus()
                         return true
                     }
                     // OK on Audio/Aspect keeps playback running and leaves the menu action to the view.
@@ -420,7 +407,7 @@ class PlayerActivity : Activity() {
                         return true
                     }
                     if (controlsVisible) {
-                        val buttons = listOf(playPauseButton, audioButton, aspectButton)
+                        val buttons = listOf(audioButton, aspectButton)
                         val index = buttons.indexOfFirst { it === focus }
                         if (index >= 0) {
                             val target = index + if (left) -1 else 1
@@ -450,11 +437,9 @@ class PlayerActivity : Activity() {
                         return true
                     }
                     when {
-                        currentFocus === timeline && up -> playPauseButton.requestFocus()
-                        currentFocus === playPauseButton && !up -> timeline.requestFocus()
-                        currentFocus === audioButton && !up -> playPauseButton.requestFocus()
+                        currentFocus === timeline && up -> audioButton.requestFocus()
+                        currentFocus === audioButton && !up -> timeline.requestFocus()
                         currentFocus === aspectButton && !up -> audioButton.requestFocus()
-                        currentFocus === playPauseButton && up -> audioButton.requestFocus()
                         currentFocus === audioButton && up -> aspectButton.requestFocus()
                         else -> {
                             showControls()
@@ -504,14 +489,11 @@ class PlayerActivity : Activity() {
     }
 
     private fun updatePlayPauseButton() {
-        if (!::playPauseButton.isInitialized) return
-        playPauseButton.text = if (player?.isPlaying == true) "Ⅱ" else "▶"
-        playPauseButton.contentDescription = if (player?.isPlaying == true) "Pause" else "Play"
+        // Playback state is controlled from the timeline/player surface; no separate button.
     }
 
     private fun hasControlFocus(): Boolean =
-        currentFocus === timeline || currentFocus === playPauseButton ||
-            currentFocus === audioButton || currentFocus === aspectButton
+        currentFocus === timeline || currentFocus === audioButton || currentFocus === aspectButton
 
     private fun showControls() {
         if (!::controls.isInitialized) return
@@ -532,7 +514,7 @@ class PlayerActivity : Activity() {
         TextView(this).apply {
             text = symbol
             contentDescription = description
-            textSize = if (description == "Play / Pause") 30f else 19f
+            textSize = 19f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
@@ -541,7 +523,7 @@ class PlayerActivity : Activity() {
             setOnClickListener { action() }
             fun buttonBackground(focused: Boolean) = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(if (description == "Play / Pause") 30 else 22).toFloat()
+                cornerRadius = dp(22).toFloat()
                 setColor(if (focused) Color.rgb(105, 200, 255) else 0xCC242832.toInt())
                 setStroke(dp(2), if (focused) Color.rgb(170, 230, 255) else 0x55FFFFFF)
             }
@@ -552,8 +534,8 @@ class PlayerActivity : Activity() {
             }
             setPadding(dp(10), 0, dp(10), 0)
             layoutParams = LinearLayout.LayoutParams(
-                if (description == "Play / Pause") dp(66) else dp(82),
-                dp(if (description == "Play / Pause") 58 else 48)
+                dp(82),
+                dp(48)
             ).apply {
                 marginStart = dp(8); marginEnd = dp(8)
             }
