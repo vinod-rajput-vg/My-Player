@@ -58,11 +58,14 @@ class PlayerActivity : Activity() {
     private var userSeeking = false
     private var controlsHideDelay = 3000L
     private var retryAttempt = 0
+    private val maxAutoRetries = 12
+    private var playbackReleased = false
     private var isTsStream = false
     private var retryFromBeginning = false
     private var audioPreferenceApplied = false
     private val retryPlayback = Runnable {
         val activePlayer = player ?: return@Runnable
+        if (playbackReleased || isFinishing || isDestroyed) return@Runnable
         if (retryFromBeginning) activePlayer.seekToDefaultPosition()
         retryFromBeginning = false
         activePlayer.prepare()
@@ -191,7 +194,7 @@ class PlayerActivity : Activity() {
             showControls()
         }
         if (prefs.getBoolean("button_previous", true)) buttonRow.addView(previousButton)
-        buttonRow.addView(playPauseButton)
+        if (prefs.getBoolean("button_play_pause", true)) buttonRow.addView(playPauseButton)
         if (prefs.getBoolean("button_next", true)) buttonRow.addView(nextButton)
         controls.addView(buttonRow, LinearLayout.LayoutParams(-1, dp(64)))
         root.addView(controls, FrameLayout.LayoutParams(-1, dp(202), Gravity.BOTTOM))
@@ -272,9 +275,10 @@ class PlayerActivity : Activity() {
                     )
                     handler.removeCallbacks(retryPlayback)
                     val retryable = isRetryablePlaybackError(error)
-                    if (retryable) {
+                    if (retryable && retryAttempt < maxAutoRetries && !playbackReleased) {
                         retryAttempt++
-                        val delayMs = 0L // Re-open the same stream URL immediately; no backoff for .ts disconnects
+                        // Reconnect immediately once, then back off to avoid hammering a failed endpoint.
+                        val delayMs = if (retryAttempt == 1) 0L else (1000L shl (retryAttempt - 2).coerceAtMost(4)).coerceAtMost(15_000L)
                         Toast.makeText(
                             this@PlayerActivity,
                             "Connection interrupted. Reconnecting…",
@@ -285,7 +289,7 @@ class PlayerActivity : Activity() {
                         val detail = error.cause?.message ?: error.message ?: "Unknown playback error"
                         Toast.makeText(
                             this@PlayerActivity,
-                            if (retryable) "Auto-retry limit reached. Retry playback manually."
+                            if (retryable) "Reconnect limit reached. Restart playback to try again."
                             else "Playback failed: $detail",
                             Toast.LENGTH_LONG
                         ).show()
@@ -320,10 +324,16 @@ class PlayerActivity : Activity() {
                     updateProgress()
                     // A progressive .ts response may end normally when the server closes it.
                     // Re-open the same URL immediately while playback is still requested.
-                    if (playbackState == Player.STATE_ENDED && isTsStream && exo.playWhenReady) {
+                    if (playbackState == Player.STATE_ENDED && isTsStream && exo.playWhenReady && !playbackReleased) {
                         handler.removeCallbacks(retryPlayback)
                         retryFromBeginning = true
-                        handler.post(retryPlayback)
+                        if (retryAttempt < maxAutoRetries) {
+                            retryAttempt++
+                            val delayMs = if (retryAttempt == 1) 0L else (1000L shl (retryAttempt - 2).coerceAtMost(4)).coerceAtMost(15_000L)
+                            handler.postDelayed(retryPlayback, delayMs)
+                        } else {
+                            Toast.makeText(this@PlayerActivity, "Reconnect limit reached. Restart playback to try again.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -640,6 +650,8 @@ class PlayerActivity : Activity() {
                             .putBoolean("audio_track_disabled", false)
                             .putString("audio_track_language", format?.language.orEmpty())
                             .putString("audio_track_mime", format?.sampleMimeType.orEmpty())
+                            .putInt("audio_track_channel_count", format?.channelCount ?: -1)
+                            .putInt("audio_track_sample_rate", format?.sampleRate ?: -1)
                             .putInt("audio_track_index", option.trackIndex)
                             .apply()
                     }
@@ -660,7 +672,8 @@ class PlayerActivity : Activity() {
         if (audioPreferenceApplied || audioGroups.isEmpty()) return
         val savedLanguage = prefs.getString("audio_track_language", "").orEmpty()
         val savedMime = prefs.getString("audio_track_mime", "").orEmpty()
-        val savedIndex = prefs.getInt("audio_track_index", -1)
+        val savedChannels = prefs.getInt("audio_track_channel_count", -1)
+        val savedSampleRate = prefs.getInt("audio_track_sample_rate", -1)
         val disableAudio = prefs.getBoolean("audio_track_disabled", false)
         val builder = trackSelector.buildUponParameters()
             .setConstrainAudioChannelCountToDeviceCapabilities(false)
@@ -681,10 +694,18 @@ class PlayerActivity : Activity() {
             }
         }
         val match = candidates.firstOrNull { (_, _, format) ->
+            savedTag != null &&
+                normalizedLanguageTag(format.language.orEmpty()) == savedTag &&
+                (savedMime.isBlank() || format.sampleMimeType == savedMime) &&
+                (savedChannels < 0 || format.channelCount == savedChannels) &&
+                (savedSampleRate < 0 || format.sampleRate == savedSampleRate)
+        } ?: candidates.firstOrNull { (_, _, format) ->
             savedTag != null && normalizedLanguageTag(format.language.orEmpty()) == savedTag
         } ?: candidates.firstOrNull { (_, _, format) ->
-            savedMime.isNotBlank() && format.sampleMimeType == savedMime
-        } ?: candidates.firstOrNull { (_, index, _) -> savedIndex >= 0 && index == savedIndex }
+            savedMime.isNotBlank() && format.sampleMimeType == savedMime &&
+                (savedChannels < 0 || format.channelCount == savedChannels) &&
+                (savedSampleRate < 0 || format.sampleRate == savedSampleRate)
+        }
 
         if (match != null) {
             val (group, index, _) = match
@@ -809,10 +830,21 @@ class PlayerActivity : Activity() {
     override fun onBackPressed() { finishAffinity() }
 
     override fun onStop() {
+        // Keep the player instance so returning to this activity does not leave a blank surface.
+        // Pause playback while the activity is not visible; release it in onDestroy.
+        handler.removeCallbacks(hideControls)
+        handler.removeCallbacks(progressUpdater)
+        handler.removeCallbacks(retryPlayback)
+        player?.pause()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        playbackReleased = true
         handler.removeCallbacksAndMessages(null)
         if (::playerView.isInitialized) playerView.player = null
         player?.release()
         player = null
-        super.onStop()
+        super.onDestroy()
     }
 }
