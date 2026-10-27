@@ -561,6 +561,8 @@ showControls()
                         ?.substringBefore('-')
                     val label = when (languageCode) {
                         "hi" -> "Hindi"
+                        "mr" -> "Marathi"
+                        "gu" -> "Gujarati"
                         "en" -> "English"
                         else -> null
                     } ?: continue
