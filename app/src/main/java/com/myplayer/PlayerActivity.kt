@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
-import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -17,7 +16,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.C
@@ -45,14 +43,8 @@ class PlayerActivity : Activity() {
     private lateinit var trackSelector: DefaultTrackSelector
     private lateinit var playerView: PlayerView
     private lateinit var controls: LinearLayout
-    private lateinit var playPauseButton: TextView
-    private lateinit var positionLabel: TextView
-    private lateinit var remainingLabel: TextView
-    private lateinit var progress: SeekBar
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
-    private lateinit var previousButton: TextView
-    private lateinit var nextButton: TextView
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
     private var userSeeking = false
@@ -75,15 +67,6 @@ class PlayerActivity : Activity() {
 
     private val hideControls = Runnable {
         if (::controls.isInitialized) controls.visibility = View.GONE
-        handler.removeCallbacks(progressUpdater)
-    }
-    private val progressUpdater = object : Runnable {
-        override fun run() {
-            if (::controls.isInitialized && controls.visibility == View.VISIBLE && player != null) {
-                updateProgress()
-                handler.postDelayed(this, 750)
-            }
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,65 +122,7 @@ class PlayerActivity : Activity() {
         utilityRow.addView(aspectButton)
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
 
-        val seekRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        positionLabel = timeLabel("00:00")
-        remainingLabel = timeLabel("-00:00")
-        progress = SeekBar(this).apply {
-            max = 1000
-            progressTintList = ColorStateList.valueOf(Color.rgb(83, 190, 255))
-            progressBackgroundTintList = ColorStateList.valueOf(0x66FFFFFF)
-            thumbTintList = ColorStateList.valueOf(Color.WHITE)
-            isFocusable = true
-            contentDescription = "Playback progress"
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onStartTrackingTouch(seekBar: SeekBar) { userSeeking = true; showControls() }
-                override fun onStopTrackingTouch(seekBar: SeekBar) {
-                    val p = player ?: return
-                    if (p.duration > 0) p.seekTo((p.duration * seekBar.progress / 1000L))
-                    userSeeking = false
-                    showControls()
-                }
-                override fun onProgressChanged(seekBar: SeekBar, value: Int, fromUser: Boolean) {
-                    if (fromUser) {
-                        val duration = player?.duration ?: 0L
-                        if (duration > 0) {
-                            positionLabel.text = formatTime(duration * value / 1000L)
-                            remainingLabel.text = "-" + formatTime(duration - duration * value / 1000L)
-                        }
-                    }
-                }
-            })
-        }
-        seekRow.addView(positionLabel, LinearLayout.LayoutParams(dp(78), -2))
-        seekRow.addView(progress, LinearLayout.LayoutParams(0, dp(42), 1f))
-        seekRow.addView(remainingLabel, LinearLayout.LayoutParams(dp(90), -2))
-        controls.addView(seekRow, LinearLayout.LayoutParams(-1, -2))
-
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        previousButton = controlButton("−10s", "Rewind") {
-            seekByRemote(-prefs.getInt("seek_interval", 10) * 1000L)
-            showControls()
-        }
-        playPauseButton = controlButton("Ⅱ", "Play / Pause") {
-            player?.let { if (it.isPlaying) it.pause() else it.play() }
-            refreshPlayPause()
-            showControls()
-        }
-        nextButton = controlButton("+10s", "Forward") {
-            seekByRemote(prefs.getInt("seek_interval", 10) * 1000L)
-            showControls()
-        }
-        if (prefs.getBoolean("button_previous", true)) buttonRow.addView(previousButton)
-        if (prefs.getBoolean("button_play_pause", true)) buttonRow.addView(playPauseButton)
-        if (prefs.getBoolean("button_next", true)) buttonRow.addView(nextButton)
-        controls.addView(buttonRow, LinearLayout.LayoutParams(-1, dp(64)))
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(202), Gravity.BOTTOM))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(80), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
@@ -306,7 +231,7 @@ class PlayerActivity : Activity() {
                     )
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    refreshPlayPause()
+
                     handler.removeCallbacks(resetRetryCounter)
                     if (isPlaying) handler.postDelayed(resetRetryCounter, 30_000L)
                 }
@@ -379,7 +304,7 @@ class PlayerActivity : Activity() {
         }
         root.isFocusableInTouchMode = true
         root.requestFocus()
-        playerView.setOnClickListener { showControls() }
+        playerView.setOnClickListener { togglePlayback(); showControls() }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -387,25 +312,15 @@ class PlayerActivity : Activity() {
             val controlsVisible = ::controls.isInitialized && controls.visibility == View.VISIBLE
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (controlsVisible && currentFocus != null &&
-                        (currentFocus === progress || currentFocus?.contentDescription == "Rewind" ||
-                         currentFocus?.contentDescription == "Forward" ||
-                         currentFocus?.contentDescription == "Play / Pause" ||
-                         currentFocus?.contentDescription == "Pause" || currentFocus?.contentDescription == "Play")) {
-                        showControls()
-                        return super.dispatchKeyEvent(event)
-                    }
                     if (!controlsVisible) {
-                        player?.let { if (it.isPlaying) it.pause() else it.play() }
-                        refreshPlayPause()
+                        togglePlayback()
                         showControls()
                         return true
                     }
                     return super.dispatchKeyEvent(event)
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    player?.let { if (it.isPlaying) it.pause() else it.play() }
-                    refreshPlayPause()
+                    togglePlayback()
                     showControls()
                     return true
                 }
@@ -413,30 +328,16 @@ class PlayerActivity : Activity() {
                     if (controlsVisible) {
                         val left = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                         val focus = currentFocus
-                        val transportButtons = listOfNotNull(
-                            previousButton.takeIf { it.parent != null },
-                            playPauseButton,
-                            nextButton.takeIf { it.parent != null }
-                        )
                         when {
-                            focus === progress -> {
-                                val step = prefs.getInt("seek_interval", 10) * 1000L
-                                seekByRemote(if (left) -step else step)
-                            }
                             focus === audioButton || focus === aspectButton -> {
                                 val utilityButtons = listOf(audioButton, aspectButton)
                                 val index = utilityButtons.indexOfFirst { it === focus }
                                 val target = index + if (left) -1 else 1
                                 if (target in utilityButtons.indices) utilityButtons[target].requestFocus()
                             }
-                            transportButtons.any { it === focus } -> {
-                                val index = transportButtons.indexOfFirst { it === focus }
-                                val target = index + if (left) -1 else 1
-                                if (target in transportButtons.indices) transportButtons[target].requestFocus()
-                            }
                             else -> {
-                                // From an unfocused video surface, reveal controls and focus Play/Pause.
-                                playPauseButton.requestFocus()
+                                // Reveal the two utility controls when focus is on the video surface.
+                                audioButton.requestFocus()
                             }
                         }
                         showControls()
@@ -458,31 +359,10 @@ class PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (!controlsVisible) {
                         showControls()
-                        playPauseButton.requestFocus()
+                        audioButton.requestFocus()
                         return true
                     }
-                    val focus = currentFocus
-                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        (focus === audioButton || focus === aspectButton)) {
-                        progress.requestFocus()
-                        showControls()
-                        return true
-                    }
-                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                        (focus === progress || focus === positionLabel || focus === remainingLabel)) {
-                        (if (focus === audioButton) audioButton else aspectButton).requestFocus()
-                        showControls()
-                        return true
-                    }
-                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                        (focus === progress || focus === positionLabel || focus === remainingLabel)) {
-                        playPauseButton.requestFocus()
-                        showControls()
-                        return true
-                    }
-                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                        (focus === playPauseButton || focus === previousButton || focus === nextButton)) {
-                        progress.requestFocus()
+                    if (currentFocus === audioButton || currentFocus === aspectButton) {
                         showControls()
                         return true
                     }
@@ -521,19 +401,22 @@ class PlayerActivity : Activity() {
         return false
     }
 
+    private fun togglePlayback() {
+        player?.let { active ->
+            if (active.isPlaying) active.pause() else active.play()
+        }
+    }
+
     private fun showControls() {
         if (!::controls.isInitialized) return
         val wasHidden = controls.visibility != View.VISIBLE
         controls.visibility = View.VISIBLE
-        refreshPlayPause()
-        updateProgress()
+
         if (wasHidden) {
-            // Start on a real playback control so D-pad users can operate the player immediately.
-            playPauseButton.requestFocus()
+            // Focus the audio selector first; the aspect control is adjacent.
+            audioButton.requestFocus()
         }
         handler.removeCallbacks(hideControls)
-        handler.removeCallbacks(progressUpdater)
-        handler.post(progressUpdater)
         if (player?.isPlaying == true) handler.postDelayed(hideControls, controlsHideDelay)
     }
 
@@ -580,90 +463,128 @@ class PlayerActivity : Activity() {
 
     private fun showAudioTrackDialog() {
         val activePlayer = player ?: return
-        val options = mutableListOf(AudioTrackOption("Disable", null, -1, false, true))
-        var number = 0
-        activePlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { group ->
-            for (index in 0 until group.length) {
-                number++
-                val format = group.getTrackFormat(index)
-                val language = format.language?.let { languageDisplayName(it) }
-                val baseLabel = if (language.isNullOrBlank()) "Track $number" else "Track $number - [$language]"
-                val supported = group.isTrackSupported(index)
-                val codec = format.sampleMimeType?.substringAfter('/')?.uppercase(Locale.ROOT)
-                val label = buildString {
-                    append(baseLabel)
-                    if (!codec.isNullOrBlank()) append(" · ").append(codec)
-                    if (!supported) append(" · may not be supported by this device")
-                }
-                options.add(
-                    AudioTrackOption(
+        // Expose only the requested user-facing languages. Keep the first available
+        // rendition for each language so technical/duplicate tracks do not clutter the menu.
+        val languageTracks = linkedMapOf<String, AudioTrackOption>()
+        activePlayer.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .forEach { group ->
+                for (index in 0 until group.length) {
+                    val format = group.getTrackFormat(index)
+                    val languageCode = normalizedLanguageTag(format.language.orEmpty())
+                        ?.substringBefore('-')
+                    val label = when (languageCode) {
+                        "hi" -> "Hindi"
+                        "en" -> "English"
+                        else -> null
+                    } ?: continue
+                    if (languageTracks.containsKey(languageCode)) continue
+                    languageTracks[languageCode] = AudioTrackOption(
                         label = label,
                         group = group.mediaTrackGroup,
                         trackIndex = index,
                         selected = group.isTrackSelected(index),
-                        supported = supported
+                        supported = group.isTrackSupported(index)
                     )
-                )
+                }
             }
-        }
-        if (options.size == 1) {
-            Toast.makeText(this, "No audio tracks available", Toast.LENGTH_SHORT).show()
+
+        val options = languageTracks.values.toList()
+        if (options.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Hindi/English audio tracks are not available in this stream",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), dp(4)) }
-        val scroll = ScrollView(this).apply { isFillViewport = true; isFocusable = false; addView(list, ViewGroup.LayoutParams(-1, -2)) }
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isFocusable = false
+            addView(list, ViewGroup.LayoutParams(-1, -2))
+        }
         var dialog: AlertDialog? = null
         options.forEach { option ->
             val row = TextView(this).apply {
                 text = (if (option.selected) "●   " else "     ") + option.label
-                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER_VERTICAL
-                minHeight = dp(54); setPadding(dp(18), dp(8), dp(18), dp(8))
-                isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER_VERTICAL
+                minHeight = dp(54)
+                setPadding(dp(18), dp(8), dp(18), dp(8))
+                isFocusable = true
+                isFocusableInTouchMode = true
+                isClickable = true
                 alpha = if (option.supported) 1f else 0.72f
+
                 fun styleRow(focused: Boolean) {
                     background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE; cornerRadius = dp(6).toFloat()
-                        setColor(if (focused) Color.rgb(42,112,174) else if (option.selected) Color.rgb(35,57,78) else Color.rgb(28,30,34))
-                        setStroke(dp(if (focused) 2 else 1), if (focused) Color.rgb(143,190,255) else Color.rgb(70,75,82))
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(6).toFloat()
+                        setColor(
+                            if (focused) Color.rgb(42, 112, 174)
+                            else if (option.selected) Color.rgb(35, 57, 78)
+                            else Color.rgb(28, 30, 34)
+                        )
+                        setStroke(
+                            dp(if (focused) 2 else 1),
+                            if (focused) Color.rgb(143, 190, 255)
+                            else Color.rgb(70, 75, 82)
+                        )
                     }
                 }
-                styleRow(false); setOnFocusChangeListener { _, focused -> styleRow(focused) }
+                styleRow(false)
+                setOnFocusChangeListener { _, focused -> styleRow(focused) }
                 setOnClickListener {
+                    val selectedGroup = option.group ?: return@setOnClickListener
+                    val format = selectedGroup.getFormat(option.trackIndex)
                     val builder = trackSelector.buildUponParameters()
                         .setConstrainAudioChannelCountToDeviceCapabilities(false)
                         .setExceedRendererCapabilitiesIfNecessary(true)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                         .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                    if (option.disabled) builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    else option.group?.let { group ->
-                        builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                        builder.setOverrideForType(androidx.media3.common.TrackSelectionOverride(group, option.trackIndex))
-                    }
+                        .setOverrideForType(
+                            androidx.media3.common.TrackSelectionOverride(
+                                selectedGroup,
+                                option.trackIndex
+                            )
+                        )
                     trackSelector.parameters = builder.build()
-                    if (option.disabled) {
-                        prefs.edit().putBoolean("audio_track_disabled", true).apply()
-                    } else {
-                        val format = option.group?.let { selectedGroup ->
-                            (0 until selectedGroup.length).firstOrNull { it == option.trackIndex }
-                                ?.let { selectedGroup.getFormat(it) }
-                        }
-                        prefs.edit()
-                            .putBoolean("audio_track_disabled", false)
-                            .putString("audio_track_language", format?.language.orEmpty())
-                            .putString("audio_track_mime", format?.sampleMimeType.orEmpty())
-                            .putInt("audio_track_channel_count", format?.channelCount ?: -1)
-                            .putInt("audio_track_sample_rate", format?.sampleRate ?: -1)
-                            .putInt("audio_track_index", option.trackIndex)
-                            .apply()
-                    }
+                    prefs.edit()
+                        .putBoolean("audio_track_disabled", false)
+                        .putString("audio_track_language", format.language.orEmpty())
+                        .putString("audio_track_mime", format.sampleMimeType.orEmpty())
+                        .putInt("audio_track_channel_count", format.channelCount)
+                        .putInt("audio_track_sample_rate", format.sampleRate)
+                        .putInt("audio_track_index", option.trackIndex)
+                        .apply()
                     audioPreferenceApplied = true
-                    dialog?.dismiss(); showControls()
+                    dialog?.dismiss()
+                    showControls()
                 }
             }
-            list.addView(row, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(4) })
+            list.addView(
+                row,
+                LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(4) }
+            )
         }
-        dialog = AlertDialog.Builder(this).setTitle("Audio Track").setView(scroll).setNegativeButton("Close", null).create()
-        dialog?.setOnShowListener { val index = options.indexOfFirst { it.selected }; list.getChildAt(if (index >= 0) index else 1)?.requestFocus() }
-        dialog?.show(); dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
+
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Audio Language")
+            .setView(scroll)
+            .setNegativeButton("Close", null)
+            .create()
+        dialog?.setOnShowListener {
+            val selectedIndex = options.indexOfFirst { it.selected }
+            list.getChildAt(if (selectedIndex >= 0) selectedIndex else 0)?.requestFocus()
+        }
+        dialog?.show()
+        dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
     }
 
     private fun applySavedAudioPreference(
@@ -767,54 +688,6 @@ class PlayerActivity : Activity() {
         showControls()
     }
 
-    private fun timeLabel(value: String) = TextView(this).apply {
-        text = value
-        textSize = 14f
-        setTextColor(Color.WHITE)
-        gravity = Gravity.CENTER
-        maxLines = 1
-    }
-
-    private fun refreshPlayPause() {
-        if (::playPauseButton.isInitialized) {
-            val playing = player?.isPlaying == true
-            playPauseButton.text = if (playing) "Ⅱ" else "▶"
-            playPauseButton.contentDescription = if (playing) "Pause" else "Play"
-        }
-    }
-
-    private fun updateProgress() {
-        val p = player ?: return
-        val duration = p.duration
-        val position = p.currentPosition.coerceAtLeast(0L)
-        if (!userSeeking) {
-            if (duration > 0L) {
-                val targetProgress = ((position * 1000L) / duration).toInt().coerceIn(0, 1000)
-                if (progress.progress != targetProgress) progress.progress = targetProgress
-                val positionText = formatTime(position)
-                if (positionLabel.text != positionText) positionLabel.text = positionText
-                val remainingText = "-" + formatTime((duration - position).coerceAtLeast(0L))
-                if (remainingLabel.text != remainingText) remainingLabel.text = remainingText
-                progress.isEnabled = true
-            } else {
-                if (progress.progress != 0) progress.progress = 0
-                val positionText = formatTime(position)
-                if (positionLabel.text != positionText) positionLabel.text = positionText
-                if (remainingLabel.text != "LIVE") remainingLabel.text = "LIVE"
-                progress.isEnabled = false
-            }
-        }
-    }
-
-    private fun formatTime(ms: Long): String {
-        val total = (ms / 1000L).coerceAtLeast(0L)
-        val hours = total / 3600
-        val minutes = (total % 3600) / 60
-        val seconds = total % 60
-        return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-        else String.format(Locale.US, "%02d:%02d", minutes, seconds)
-    }
-
     private fun seekByRemote(offsetMs: Long) {
         val p = player ?: return
         if (p.isCurrentMediaItemLive && !p.isCurrentMediaItemSeekable) return
@@ -833,7 +706,6 @@ class PlayerActivity : Activity() {
         // Keep the player instance so returning to this activity does not leave a blank surface.
         // Pause playback while the activity is not visible; release it in onDestroy.
         handler.removeCallbacks(hideControls)
-        handler.removeCallbacks(progressUpdater)
         handler.removeCallbacks(retryPlayback)
         player?.pause()
         super.onStop()
