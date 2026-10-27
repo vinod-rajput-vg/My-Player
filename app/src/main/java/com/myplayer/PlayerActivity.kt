@@ -46,6 +46,7 @@ class PlayerActivity : Activity() {
     private lateinit var controls: LinearLayout
     private lateinit var aspectButton: TextView
     private lateinit var audioButton: TextView
+    private lateinit var playPauseButton: TextView
     private lateinit var timeline: SeekBar
     private lateinit var positionLabel: TextView
     private lateinit var durationLabel: TextView
@@ -125,6 +126,11 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
         }
+        playPauseButton = controlButton("Ⅱ", "Play / Pause") {
+            togglePlayback()
+            updatePlayPauseButton()
+            showControls()
+        }
         audioButton = controlButton("♫", "Audio track") {
             showAudioTrackDialog()
         }
@@ -173,12 +179,14 @@ class PlayerActivity : Activity() {
             marginStart = dp(8); marginEnd = dp(8)
         })
         timelineRow.addView(durationLabel, LinearLayout.LayoutParams(dp(48), -2))
-        controls.addView(timelineRow, LinearLayout.LayoutParams(-1, dp(38)))
+        utilityRow.addView(playPauseButton)
         utilityRow.addView(audioButton)
         utilityRow.addView(aspectButton)
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
+        // Timeline stays below the playback and utility buttons.
+        controls.addView(timelineRow, LinearLayout.LayoutParams(-1, dp(38)))
 
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(104), Gravity.BOTTOM))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM))
         setContentView(root)
 
         val parsedUri = android.net.Uri.parse(url)
@@ -359,7 +367,14 @@ class PlayerActivity : Activity() {
         }
         root.isFocusableInTouchMode = true
         root.requestFocus()
-        playerView.setOnClickListener { togglePlayback(); showControls() }
+        playerView.setOnClickListener {
+            togglePlayback()
+            updatePlayPauseButton()
+            showControls()
+        }
+        // Show controls on entry and place the initial TV-remote focus on the timeline.
+        showControls()
+        timeline.requestFocus()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -369,7 +384,17 @@ class PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     if (!controlsVisible) {
                         togglePlayback()
+                        updatePlayPauseButton()
                         showControls()
+                        timeline.requestFocus()
+                        return true
+                    }
+                    // OK on timeline toggles playback; it does not stop/release the player.
+                    if (currentFocus === timeline) {
+                        togglePlayback()
+                        updatePlayPauseButton()
+                        showControls()
+                        timeline.requestFocus()
                         return true
                     }
                     return super.dispatchKeyEvent(event)
@@ -380,28 +405,29 @@ class PlayerActivity : Activity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    val left = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    val focus = currentFocus
+                    if (controlsVisible && focus === timeline) {
+                        seekByRemote(if (left) -prefs.getInt("seek_interval", 10) * 1000L
+                            else prefs.getInt("seek_interval", 10) * 1000L)
+                        showControls()
+                        timeline.requestFocus()
+                        return true
+                    }
                     if (controlsVisible) {
-                        val left = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                        val focus = currentFocus
-                        when {
-                            focus === audioButton || focus === aspectButton -> {
-                                val utilityButtons = listOf(audioButton, aspectButton)
-                                val index = utilityButtons.indexOfFirst { it === focus }
-                                val target = index + if (left) -1 else 1
-                                if (target in utilityButtons.indices) utilityButtons[target].requestFocus()
-                            }
-                            else -> {
-                                // Reveal the two utility controls when focus is on the video surface.
-                                audioButton.requestFocus()
-                            }
-                        }
+                        val buttons = listOf(playPauseButton, audioButton, aspectButton)
+                        val index = buttons.indexOfFirst { it === focus }
+                        if (index >= 0) {
+                            val target = index + if (left) -1 else 1
+                            if (target in buttons.indices) buttons[target].requestFocus()
+                        } else timeline.requestFocus()
                         showControls()
                         return true
                     }
-                    seekByRemote(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT)
-                        -prefs.getInt("seek_interval", 10) * 1000L
-                    else prefs.getInt("seek_interval", 10) * 1000L)
+                    seekByRemote(if (left) -prefs.getInt("seek_interval", 10) * 1000L
+                        else prefs.getInt("seek_interval", 10) * 1000L)
                     showControls()
+                    timeline.requestFocus()
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
@@ -412,17 +438,26 @@ class PlayerActivity : Activity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    val up = event.keyCode == KeyEvent.KEYCODE_DPAD_UP
                     if (!controlsVisible) {
                         showControls()
-                        audioButton.requestFocus()
+                        timeline.requestFocus()
                         return true
                     }
-                    if (currentFocus === audioButton || currentFocus === aspectButton) {
-                        showControls()
-                        return true
+                    when {
+                        currentFocus === timeline && up -> playPauseButton.requestFocus()
+                        currentFocus === playPauseButton && !up -> timeline.requestFocus()
+                        currentFocus === audioButton && !up -> playPauseButton.requestFocus()
+                        currentFocus === aspectButton && !up -> audioButton.requestFocus()
+                        currentFocus === playPauseButton && up -> audioButton.requestFocus()
+                        currentFocus === audioButton && up -> aspectButton.requestFocus()
+                        else -> {
+                            showControls()
+                            return true
+                        }
                     }
                     showControls()
-                    return super.dispatchKeyEvent(event)
+                    return true
                 }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
                     if (controlsVisible) {
@@ -463,14 +498,23 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private fun updatePlayPauseButton() {
+        if (!::playPauseButton.isInitialized) return
+        playPauseButton.text = if (player?.isPlaying == true) "Ⅱ" else "▶"
+        playPauseButton.contentDescription = if (player?.isPlaying == true) "Pause" else "Play"
+    }
+
+    private fun hasControlFocus(): Boolean =
+        currentFocus === timeline || currentFocus === playPauseButton ||
+            currentFocus === audioButton || currentFocus === aspectButton
+
     private fun showControls() {
         if (!::controls.isInitialized) return
         val wasHidden = controls.visibility != View.VISIBLE
         controls.visibility = View.VISIBLE
 
-        if (wasHidden) {
-            // Focus the audio selector first; the aspect control is adjacent.
-            audioButton.requestFocus()
+        if (wasHidden && ::timeline.isInitialized && !hasControlFocus()) {
+            timeline.requestFocus()
         }
         handler.removeCallbacks(hideControls)
         handler.removeCallbacks(progressUpdater)
