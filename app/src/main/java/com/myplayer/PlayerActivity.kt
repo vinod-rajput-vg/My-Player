@@ -486,10 +486,7 @@ showControls()
         }
     }
 
-    private fun
-{
-        // Playback state is controlled from the timeline/player surface; no separate button.
-    }
+    // Playback state is controlled from the timeline/player surface; no separate button.
 
     private fun hasControlFocus(): Boolean =
         currentFocus === timeline || currentFocus === audioButton || currentFocus === aspectButton
