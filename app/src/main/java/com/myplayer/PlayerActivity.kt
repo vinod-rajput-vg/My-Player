@@ -288,8 +288,7 @@ class PlayerActivity : Activity() {
                     )
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    updatePlayPauseButton()
-                    handler.removeCallbacks(resetRetryCounter)
+handler.removeCallbacks(resetRetryCounter)
                     if (isPlaying) handler.postDelayed(resetRetryCounter, 30_000L)
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -362,8 +361,7 @@ class PlayerActivity : Activity() {
         root.requestFocus()
         playerView.setOnClickListener {
             togglePlayback()
-            updatePlayPauseButton()
-            showControls()
+showControls()
         }
         // Show controls on entry and place the initial TV-remote focus on the timeline.
         showControls()
@@ -488,7 +486,8 @@ class PlayerActivity : Activity() {
         }
     }
 
-    private fun updatePlayPauseButton() {
+    private fun
+{
         // Playback state is controlled from the timeline/player surface; no separate button.
     }
 
