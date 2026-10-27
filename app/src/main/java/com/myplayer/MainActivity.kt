@@ -12,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.CheckBox
 
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
@@ -147,34 +146,6 @@ class MainActivity : Activity() {
             }
         }
         root.addView(seekGroup, matchWrap())
-
-        root.addView(sectionTitle("Buttons shown during playback"), topMargin())
-        root.addView(TextView(this).apply {
-            text = "Choose which transport buttons are visible."
-            textSize = 16f
-            setTextColor(mutedColor)
-        }, matchWrap())
-
-        val buttonOptions = listOf(
-            "previous" to "Previous",
-            "play_pause" to "Play / Pause",
-            "next" to "Next"
-        )
-        buttonOptions.forEach { (key, label) ->
-            val checkBox = CheckBox(this).apply {
-                text = label
-                textSize = 17f
-                setTextColor(textColor)
-                buttonTintList = android.content.res.ColorStateList.valueOf(textColor)
-                isFocusable = true
-                isChecked = prefs.getBoolean("button_$key", true)
-                setOnCheckedChangeListener { _, checked ->
-                    prefs.edit().putBoolean("button_$key", checked).apply()
-                }
-            }
-            root.addView(checkBox, matchWrap())
-            if (firstFocusableControl == null) firstFocusableControl = checkBox
-        }
 
         val note = TextView(this).apply {
             text = "Changes apply the next time a video is opened."
