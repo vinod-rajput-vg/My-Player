@@ -295,7 +295,7 @@ class PlayerActivity : Activity() {
                     )
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-
+                    updatePlayPauseButton()
                     handler.removeCallbacks(resetRetryCounter)
                     if (isPlaying) handler.postDelayed(resetRetryCounter, 30_000L)
                 }
