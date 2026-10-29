@@ -184,7 +184,10 @@ class PlayerActivity : Activity() {
 
         val parsedUri = android.net.Uri.parse(url)
         val path = parsedUri.path.orEmpty()
+        // Some IPTV providers expose HLS playlists as .m3u endpoints with query parameters
+        // (for example, ?action=stream&id=...). The extension alone must still select HLS.
         val isHlsEndpoint = path.endsWith(".m3u8", true) ||
+            path.endsWith(".m3u", true) ||
             (path.endsWith(".php", true) && parsedUri.queryParameterNames.isNotEmpty())
         val isDashEndpoint = path.endsWith(".mpd", true)
         isTsStream = !isHlsEndpoint && !isDashEndpoint && (
