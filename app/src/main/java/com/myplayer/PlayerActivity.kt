@@ -39,7 +39,10 @@ import androidx.media3.ui.PlayerView
 import java.util.Locale
 
 class PlayerActivity : Activity() {
-    companion object { const val EXTRA_URL = "com.myplayer.EXTRA_URL" }
+    companion object {
+        const val EXTRA_URL = "com.myplayer.EXTRA_URL"
+        const val EXTRA_HTTP_HEADERS = "com.myplayer.EXTRA_HTTP_HEADERS"
+    }
 
     private var player: ExoPlayer? = null
     private lateinit var trackSelector: DefaultTrackSelector
@@ -204,7 +207,19 @@ class PlayerActivity : Activity() {
                     isDashEndpoint -> setMimeType(MimeTypes.APPLICATION_MPD)
                 }
             }.build()
+        val requestHeaders = buildMap {
+            put("Accept", "*/*")
+            intent.getBundleExtra(EXTRA_HTTP_HEADERS)?.let { headers ->
+                headers.keySet().forEach { name ->
+                    val value = headers.getString(name)?.takeIf {
+                        it.isNotBlank() && '\r' !in it && '\n' !in it
+                    }
+                    if (name.isNotBlank() && value != null) put(name, value)
+                }
+            }
+        }
         val httpFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(requestHeaders)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
@@ -267,8 +282,11 @@ class PlayerActivity : Activity() {
                         if (cause is HttpDataSource.InvalidResponseCodeException) {
                             android.util.Log.e(
                                 "MyPlayerDASH",
-                                "HTTP ${cause.responseCode}; failed URL=${cause.dataSpec.uri}; " +
-                                    "responseHeaders=${cause.headerFields}"
+                                "HTTP ${cause.responseCode}; failed URL=" +
+                                    cause.dataSpec.uri.buildUpon().clearQuery().fragment(null).build() +
+                                    "; contentType=" + cause.headerFields.entries.firstOrNull {
+                                        it.key?.equals("Content-Type", ignoreCase = true) == true
+                                    }?.value?.firstOrNull()
                             )
                             break
                         }
@@ -298,9 +316,7 @@ class PlayerActivity : Activity() {
                     if (retryable && retryAttempt < maxAutoRetries && !playbackReleased) {
                         retryAttempt++
                         // Reconnect immediately once, then back off to avoid hammering a failed endpoint.
-                        val delayMs = if (retryAttempt == 1) 0L else (1000L shl (retryAttempt - 2).coerceAtMost(4)).coerceAtMost(15_000L)
-                        handler.postDelayed(retryPlayback, delayMs)
-                    } else {
+                        handler.postDelayed(retryPlayback, retryDelayMs(retryAttempt))
                     }
                 }
                 override fun onRenderedFirstFrame() {
@@ -335,9 +351,7 @@ handler.removeCallbacks(resetRetryCounter)
                         retryFromBeginning = true
                         if (retryAttempt < maxAutoRetries) {
                             retryAttempt++
-                            val delayMs = if (retryAttempt == 1) 0L else (1000L shl (retryAttempt - 2).coerceAtMost(4)).coerceAtMost(15_000L)
-                            handler.postDelayed(retryPlayback, delayMs)
-                        } else {
+                            handler.postDelayed(retryPlayback, retryDelayMs(retryAttempt))
                         }
                     }
                 }
@@ -485,6 +499,10 @@ showControls()
         }
         return super.dispatchKeyEvent(event)
     }
+
+    private fun retryDelayMs(attempt: Int): Long =
+        if (attempt <= 1) 0L
+        else (1000L shl (attempt - 2).coerceAtMost(4)).coerceAtMost(15_000L)
 
     private fun isRetryablePlaybackError(error: PlaybackException): Boolean {
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
@@ -669,7 +687,6 @@ showControls()
                         .putString("audio_track_mime", format.sampleMimeType.orEmpty())
                         .putInt("audio_track_channel_count", format.channelCount)
                         .putInt("audio_track_sample_rate", format.sampleRate)
-                        .putInt("audio_track_index", option.trackIndex)
                         .apply()
                     audioPreferenceApplied = true
                     dialog?.dismiss()
@@ -757,16 +774,7 @@ showControls()
         return if (suffix == null) normalized else "$normalized-$suffix"
     }
 
-    private fun languageDisplayName(rawLanguage: String): String? {
-        val tag = normalizedLanguageTag(rawLanguage) ?: return null
-        val locale = Locale.forLanguageTag(tag); val code = locale.language
-        if (code.isBlank() || code.equals("und", ignoreCase = true)) return null
-        val name = locale.getDisplayLanguage(Locale.ENGLISH).trim()
-        if (name.isBlank() || name.equals(code, ignoreCase = true)) return null
-        return name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ENGLISH) else it.toString() }
-    }
-
-    private fun showAspectRatioMenu(anchor: View) {
+unused language function    private fun showAspectRatioMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         menu.menu.add("Fit").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT

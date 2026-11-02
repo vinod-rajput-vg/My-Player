@@ -202,7 +202,8 @@ class MainActivity : Activity() {
         }
 
         startActivity(Intent(this, PlayerActivity::class.java)
-            .putExtra(PlayerActivity.EXTRA_URL, uri.toString()))
+            .putExtra(PlayerActivity.EXTRA_URL, uri.toString())
+            .putExtra(PlayerActivity.EXTRA_HTTP_HEADERS, incoming.getBundleExtra(PlayerActivity.EXTRA_HTTP_HEADERS)))
         finish()
         return true
     }
