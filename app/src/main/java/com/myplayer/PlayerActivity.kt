@@ -28,6 +28,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -245,6 +246,8 @@ class PlayerActivity : Activity() {
         val renderersFactory = DefaultRenderersFactory(this)
             // Keep Android's normal hardware-first decoder ordering, but fall back if needed.
             .setEnableDecoderFallback(true)
+        // Retry unknown IPTV URLs as HLS when Media3's initial source inference fails.
+        var attemptedHlsFallback = false
         player = ExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -271,6 +274,25 @@ class PlayerActivity : Activity() {
                         }
                         cause = cause.cause
                     }
+                    // Extensionless IPTV endpoints can serve HLS manifests. If the
+                    // inferred progressive source fails, explicitly retry with HlsMediaSource.
+                    if (!isHlsEndpoint && !isDashEndpoint && !isTsStream &&
+                        !attemptedHlsFallback && !playbackReleased
+                    ) {
+                        attemptedHlsFallback = true
+                        handler.removeCallbacks(retryPlayback)
+                        android.util.Log.w(
+                            "MyPlayerDASH",
+                            "Retrying unknown stream as HLS after source error"
+                        )
+                        exo.setMediaSource(
+                            HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem)
+                        )
+                        exo.prepare()
+                        exo.playWhenReady = true
+                        return
+                    }
+
                     handler.removeCallbacks(retryPlayback)
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable && retryAttempt < maxAutoRetries && !playbackReleased) {
