@@ -80,9 +80,7 @@ class PlayerActivity : Activity() {
 
         val quality = prefs.getString("video_quality", "original") ?: "original"
         val options = mutableListOf(
-            "--no-drop-late-frames",
-            "--no-skip-frames",
-            "--network-caching=800",
+            "--network-caching=3000",
             "--http-reconnect",
             "--avcodec-hw=any",
             "--no-video-title-show"
@@ -250,13 +248,8 @@ class PlayerActivity : Activity() {
             val media = Media(libVlc, Uri.parse(url)).apply {
                 setHWDecoderEnabled(true, false)
                 addOption(":http-reconnect")
-                addOption(":network-caching=800")
-                addOption(":clock-jitter=0")
-                addOption(":clock-synchro=0")
+                addOption(":network-caching=3000")
                 addOption(":http-user-agent=MyPlayer/1.0 (Android TV)")
-                when (Uri.parse(url).path.orEmpty().lowercase(Locale.ROOT).substringAfterLast('.', "")) {
-                    "m3u8", "m3u", "php", "mpd" -> addOption(":demux=any")
-                }
             }
             activePlayer.media = media
             media.release()
