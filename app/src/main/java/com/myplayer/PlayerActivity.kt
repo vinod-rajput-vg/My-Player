@@ -547,7 +547,6 @@ showControls()
         val group: androidx.media3.common.TrackGroup?,
         val trackIndex: Int,
         val selected: Boolean,
-        val disabled: Boolean = false,
         val supported: Boolean = true
     )
 
@@ -733,15 +732,6 @@ showControls()
         val normalized = aliases[primary] ?: primary
         val suffix = raw.substringAfter('-', "").takeIf { it.isNotBlank() }
         return if (suffix == null) normalized else "$normalized-$suffix"
-    }
-
-    private fun languageDisplayName(rawLanguage: String): String? {
-        val tag = normalizedLanguageTag(rawLanguage) ?: return null
-        val locale = Locale.forLanguageTag(tag); val code = locale.language
-        if (code.isBlank() || code.equals("und", ignoreCase = true)) return null
-        val name = locale.getDisplayLanguage(Locale.ENGLISH).trim()
-        if (name.isBlank() || name.equals(code, ignoreCase = true)) return null
-        return name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ENGLISH) else it.toString() }
     }
 
     private fun showAspectRatioMenu(anchor: View) {
