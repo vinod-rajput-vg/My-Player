@@ -25,6 +25,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.dash.DashMediaSource
@@ -258,6 +259,18 @@ class PlayerActivity : Activity() {
                             "message=${error.message}, cause=${error.cause?.javaClass?.name}: ${error.cause?.message}",
                         error
                     )
+                    var cause: Throwable? = error
+                    while (cause != null) {
+                        if (cause is HttpDataSource.InvalidResponseCodeException) {
+                            android.util.Log.e(
+                                "MyPlayerDASH",
+                                "HTTP ${cause.responseCode}; failed URL=${cause.dataSpec.uri}; " +
+                                    "responseHeaders=${cause.headerFields}"
+                            )
+                            break
+                        }
+                        cause = cause.cause
+                    }
                     handler.removeCallbacks(retryPlayback)
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable && retryAttempt < maxAutoRetries && !playbackReleased) {
@@ -474,7 +487,8 @@ showControls()
         // Retry temporary stream read/source interruptions and HTTP 5xx, but not expired/denied URLs (401/403).
         var cause: Throwable? = error
         while (cause != null) {
-            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                // Client errors such as 404/401/403 require a corrected source or authorization.
                 return cause.responseCode in 500..599
             }
             if (cause is java.io.IOException) return true
@@ -831,8 +845,13 @@ showControls()
     override fun onDestroy() {
         playbackReleased = true
         handler.removeCallbacksAndMessages(null)
+
+        // Detach the UI immediately and release Media3 without blocking the main thread.
         if (::playerView.isInitialized) playerView.player = null
-        player?.release()
+        player?.let { activePlayer ->
+            activePlayer.clearVideoSurface()
+            activePlayer.release()
+        }
         player = null
         super.onDestroy()
     }
