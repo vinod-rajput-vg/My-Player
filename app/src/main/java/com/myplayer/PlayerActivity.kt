@@ -207,7 +207,7 @@ class PlayerActivity : Activity() {
                     }
                     MediaPlayer.Event.TimeChanged -> runOnUiThread { updateProgress() }
                     MediaPlayer.Event.LengthChanged -> runOnUiThread { updateProgress() }
-                    MediaPlayer.Event.Vout -> Log.i("MyPlayerVLC", "Video output count=${event.vout}")
+                    MediaPlayer.Event.Vout -> Log.i("MyPlayerVLC", "Video output changed")
                 }
             }
             val media = Media(libVlc, Uri.parse(url)).apply {
@@ -488,11 +488,11 @@ class PlayerActivity : Activity() {
 
     private fun applyAspectRatio() {
         if (!::playerView.isInitialized) return
-        playerView.scaleType = when (prefs.getString("aspect_ratio", "fit")) {
-            "fill" -> VLCVideoLayout.ScaleType.SCALE_FILL
-            "zoom" -> VLCVideoLayout.ScaleType.SCALE_FIT_SCREEN
-            else -> VLCVideoLayout.ScaleType.SCALE_FIT
-        }
+        player?.setVideoScale(when (prefs.getString("aspect_ratio", "fit")) {
+            "fill" -> MediaPlayer.ScaleType.SURFACE_FILL
+            "zoom" -> MediaPlayer.ScaleType.SURFACE_FIT_SCREEN
+            else -> MediaPlayer.ScaleType.SURFACE_BEST_FIT
+        })
     }
 
     private fun seekByRemote(offsetMs: Long) {
