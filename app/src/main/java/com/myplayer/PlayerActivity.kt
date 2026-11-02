@@ -437,7 +437,6 @@ class PlayerActivity : Activity() {
                 setOnFocusChangeListener { _, focused -> styleRow(focused) }
                 setOnClickListener {
                     activePlayer.setAudioTrack(option.id)
-                    activePlayer.setAudioTrack(option.id)
                     dialog?.dismiss()
                     showControls()
                 }
