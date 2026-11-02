@@ -20,7 +20,6 @@ import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
-import android.widget.Toast
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.LibVLC
@@ -220,20 +219,17 @@ class PlayerActivity : Activity() {
             activePlayer.play()
         } catch (error: Exception) {
             Log.e("MyPlayerVLC", "Unable to start playback", error)
-            Toast.makeText(this, "Unable to start playback: ${error.message}", Toast.LENGTH_LONG).show()
             scheduleRetry()
         }
     }
 
     private fun scheduleRetry() {
         if (playbackReleased || retryAttempt >= maxAutoRetries) {
-            Toast.makeText(this, "Reconnect limit reached. Restart playback to try again.", Toast.LENGTH_LONG).show()
             return
         }
         handler.removeCallbacks(retryPlayback)
         retryAttempt++
         val delay = if (retryAttempt == 1) 1000L else (1000L shl (retryAttempt - 2).coerceAtMost(4)).coerceAtMost(15_000L)
-        Toast.makeText(this, "Connection interrupted. Reconnecting…", Toast.LENGTH_SHORT).show()
         handler.postDelayed(retryPlayback, delay)
     }
 
@@ -393,7 +389,7 @@ class PlayerActivity : Activity() {
             )
         }
         if (options.isEmpty()) {
-            Toast.makeText(this, "Audio Tracks Are Not Available In This Stream", Toast.LENGTH_LONG).show()
+            return
             return
         }
         val list = LinearLayout(this).apply {
