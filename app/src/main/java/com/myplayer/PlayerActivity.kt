@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -41,6 +42,8 @@ class PlayerActivity : Activity() {
     private lateinit var timeline: SeekBar
     private lateinit var positionLabel: TextView
     private lateinit var durationLabel: TextView
+    private lateinit var loadingIndicator: ProgressBar
+    private lateinit var loadingLabel: TextView
     private val prefs by lazy { getSharedPreferences("player_settings", MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
     private var userSeeking = false
@@ -79,7 +82,7 @@ class PlayerActivity : Activity() {
         val options = mutableListOf(
             "--no-drop-late-frames",
             "--no-skip-frames",
-            "--network-caching=1500",
+            "--network-caching=800",
             "--http-reconnect",
             "--avcodec-hw=any",
             "--no-video-title-show"
@@ -170,7 +173,34 @@ class PlayerActivity : Activity() {
         controls.addView(utilityRow, LinearLayout.LayoutParams(-1, dp(54)))
         controls.addView(timelineRow, LinearLayout.LayoutParams(-1, dp(38)))
         root.addView(controls, FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM))
+
+        val loadingContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(12).toFloat()
+                setColor(0xB8000000.toInt())
+            }
+            isClickable = false
+            isFocusable = false
+        }
+        loadingIndicator = ProgressBar(this).apply {
+            isIndeterminate = true
+        }
+        loadingLabel = TextView(this).apply {
+            text = "Loading…"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
+        }
+        loadingContainer.addView(loadingIndicator, LinearLayout.LayoutParams(dp(44), dp(44)))
+        loadingContainer.addView(loadingLabel, LinearLayout.LayoutParams(-2, -2))
+        root.addView(loadingContainer, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         setContentView(root)
+        setLoading(true, "Connecting…")
 
         currentUrl = url
         startPlayback(url)
@@ -192,12 +222,17 @@ class PlayerActivity : Activity() {
             activePlayer.stop()
             activePlayer.setEventListener { event ->
                 when (event.type) {
-                    MediaPlayer.Event.Playing -> {
+                    MediaPlayer.Event.Opening, MediaPlayer.Event.Buffering -> runOnUiThread {
+                        setLoading(true, "Buffering…")
+                    }
+                    MediaPlayer.Event.Playing -> runOnUiThread {
+                        setLoading(false)
                         handler.removeCallbacks(resetRetryCounter)
                         handler.postDelayed(resetRetryCounter, 30_000L)
                         Log.i("MyPlayerVLC", "Playback started")
                     }
-                    MediaPlayer.Event.EncounteredError -> {
+                    MediaPlayer.Event.EncounteredError -> runOnUiThread {
+                        setLoading(true, "Reconnecting…")
                         Log.e("MyPlayerVLC", "LibVLC playback error")
                         scheduleRetry()
                     }
@@ -215,7 +250,7 @@ class PlayerActivity : Activity() {
             val media = Media(libVlc, Uri.parse(url)).apply {
                 setHWDecoderEnabled(true, false)
                 addOption(":http-reconnect")
-                addOption(":network-caching=1500")
+                addOption(":network-caching=800")
                 addOption(":clock-jitter=0")
                 addOption(":clock-synchro=0")
                 addOption(":http-user-agent=MyPlayer/1.0 (Android TV)")
@@ -233,8 +268,17 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private fun setLoading(visible: Boolean, message: String = "Loading…") {
+        if (!::loadingIndicator.isInitialized || isFinishing || isDestroyed) return
+        loadingIndicator.visibility = if (visible) View.VISIBLE else View.GONE
+        loadingLabel.visibility = if (visible) View.VISIBLE else View.GONE
+        loadingLabel.text = message
+        loadingIndicator.isIndeterminate = true
+    }
+
     private fun scheduleRetry() {
         if (playbackReleased || retryAttempt >= maxAutoRetries) {
+            setLoading(false)
             Toast.makeText(this, "Reconnect limit reached. Restart playback to try again.", Toast.LENGTH_LONG).show()
             return
         }
