@@ -206,7 +206,10 @@ class PlayerActivity : Activity() {
                         if (isLiveStream) scheduleRetry()
                     }
                     MediaPlayer.Event.TimeChanged -> runOnUiThread { updateProgress() }
-                    MediaPlayer.Event.LengthChanged -> runOnUiThread { updateProgress() }
+                    MediaPlayer.Event.LengthChanged -> runOnUiThread {
+                        isLiveStream = activePlayer.length <= 0L
+                        updateProgress()
+                    }
                     MediaPlayer.Event.Vout -> Log.i("MyPlayerVLC", "Video output changed")
                 }
             }
@@ -507,6 +510,8 @@ class PlayerActivity : Activity() {
         val active = player ?: return
         if (!::timeline.isInitialized || userSeeking) return
         val duration = active.length
+        isLiveStream = duration <= 0L
+        timeline.isEnabled = duration > 0L
         val position = active.time.coerceAtLeast(0L)
         if (duration > 0L) {
             timeline.progress = (position * 1000L / duration).toInt().coerceIn(0, 1000)
