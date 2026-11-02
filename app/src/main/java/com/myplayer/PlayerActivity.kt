@@ -209,10 +209,11 @@ class PlayerActivity : Activity() {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
             .setUserAgent("MyPlayer/1.0 (Android TV)")
-        // Progressive MPEG-TS can contain multiple programs/PMTs. Use multi-PMT extraction
-        // so Media3 has a chance to expose every audio PID/program instead of only one.
+        // This source is HLS, so use the HLS-specific TS extractor mode. Multi-PMT mode
+        // is intended for generic MPEG-TS and can mishandle HLS segment track discovery
+        // on some IPTV streams, particularly audio renditions.
         val extractorsFactory = DefaultExtractorsFactory()
-            .setTsExtractorMode(TsExtractor.MODE_MULTI_PMT)
+            .setTsExtractorMode(TsExtractor.MODE_HLS)
         val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
             .setDataSourceFactory(httpFactory)
         val loadControl = DefaultLoadControl.Builder()
