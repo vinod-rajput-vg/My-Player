@@ -50,7 +50,6 @@ class PlayerActivity : Activity() {
     private var playbackReleased = false
     private var isLiveStream = true
     private var currentUrl: String = ""
-    private var savedAudioLanguage: String = ""
     private val retryPlayback = Runnable {
         if (playbackReleased || isFinishing || isDestroyed || currentUrl.isBlank()) return@Runnable
         startPlayback(currentUrl)
@@ -438,8 +437,7 @@ class PlayerActivity : Activity() {
                 setOnFocusChangeListener { _, focused -> styleRow(focused) }
                 setOnClickListener {
                     activePlayer.setAudioTrack(option.id)
-                    prefs.edit().putString("audio_track_language", option.label).putInt("audio_track_id", option.id).apply()
-                    savedAudioLanguage = option.label
+                    activePlayer.setAudioTrack(option.id)
                     dialog?.dismiss()
                     showControls()
                 }
