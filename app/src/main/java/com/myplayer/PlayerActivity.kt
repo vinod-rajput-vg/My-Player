@@ -611,19 +611,32 @@ showControls()
                         else -> null
                     } ?: continue
                     val code = languageCode ?: continue
-                    if (languageTracks.containsKey(code)) continue
+                    val supported = group.isTrackSupported(index)
+                    val selected = group.isTrackSelected(index)
+                    val current = languageTracks[code]
+                    // Prefer a currently selected rendition, then a supported rendition.
+                    if (current != null &&
+                        (current.selected || (!selected && current.supported) || (!selected && !supported))
+                    ) continue
                     languageTracks[code] = AudioTrackOption(
                         label = label,
                         group = group.mediaTrackGroup,
                         trackIndex = index,
-                        selected = group.isTrackSelected(index),
-                        supported = group.isTrackSupported(index)
+                        selected = selected,
+                        supported = supported
                     )
                 }
             }
 
         val options = languageTracks.values.toList()
-        if (options.isEmpty()) return
+        if (options.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Audio Language")
+                .setMessage("Audio Tracks Are Not Available For This Playback")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
 
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
