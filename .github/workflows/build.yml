@@ -30,7 +30,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon clean assembleDebug --stacktrace
 
-      - name: Verify Debug APK
+      - name: Verify and Rename Debug APK
         shell: bash
         run: |
           set -euo pipefail
@@ -46,8 +46,13 @@ jobs:
 
           APK="${APKS[0]}"
           test -s "$APK"
-          echo "DEBUG_APK_PATH=$APK" >> "$GITHUB_ENV"
-          ls -lh "$APK"
+
+          RENAMED_APK="$RUNNER_TEMP/app-debug.apk"
+          cp "$APK" "$RENAMED_APK"
+          test -s "$RENAMED_APK"
+
+          echo "DEBUG_APK_PATH=$RENAMED_APK" >> "$GITHUB_ENV"
+          ls -lh "$RENAMED_APK"
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
