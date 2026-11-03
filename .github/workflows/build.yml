@@ -30,18 +30,9 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon clean assembleDebug --stacktrace
 
-      - name: Verify Debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK_DIR="app/build/outputs/apk/debug"
-          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" | wc -l)
-          test "$APK_COUNT" -gt 0
-          find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" -print -exec ls -lh {} \;
-
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: My-Player
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
