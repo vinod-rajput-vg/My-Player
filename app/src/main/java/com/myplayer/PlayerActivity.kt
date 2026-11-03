@@ -774,7 +774,7 @@ showControls()
         return if (suffix == null) normalized else "$normalized-$suffix"
     }
 
-unused language function    private fun showAspectRatioMenu(anchor: View) {
+private fun showAspectRatioMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         menu.menu.add("Fit").setOnMenuItemClickListener {
             playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
