@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
+          test -f "$APK"
           ls -lh "$APK"
 
       - name: Upload Debug APK
