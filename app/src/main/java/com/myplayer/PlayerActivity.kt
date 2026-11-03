@@ -630,11 +630,11 @@ showControls()
 
         val options = languageTracks.values.toList()
         if (options.isEmpty()) {
-            AlertDialog.Builder(this)
-                .setTitle("Audio Language")
-                .setMessage("Audio Tracks Are Not Available For This Playback")
-                .setPositiveButton("OK", null)
-                .show()
+            android.widget.Toast.makeText(
+                this,
+                "Audio Tracks Are Not Available For This Playback",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             return
         }
 
