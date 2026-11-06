@@ -147,6 +147,7 @@ class PlayerActivity : Activity() {
                         player?.setTime(seek)
                     }
                 }
+                applySavedAudioPreference()
                 handler.removeCallbacks(resetRetryCounter)
                 handler.postDelayed(resetRetryCounter, 30_000L)
                 updateProgress()
@@ -181,6 +182,17 @@ class PlayerActivity : Activity() {
 
         currentUrl = url
         currentHeaders = intent.getBundleExtra(EXTRA_HTTP_HEADERS) ?: Bundle()
+        val streamUri = android.net.Uri.parse(url)
+        val streamPath = streamUri.path.orEmpty().lowercase(Locale.ROOT)
+        val finalSegment = streamPath.substringAfterLast('/')
+        isLiveOrStream = streamPath.endsWith(".m3u8") ||
+            streamPath.endsWith(".m3u") ||
+            streamPath.endsWith(".ts") ||
+            streamPath.endsWith(".mpegts") ||
+            streamPath.endsWith(".m2ts") ||
+            streamPath.endsWith(".mpd") ||
+            (streamPath.endsWith(".php") && streamUri.queryParameterNames.isNotEmpty()) ||
+            !finalSegment.contains('.')
         controlsHideDelay = prefs.getInt("hide_timeout", 3).coerceIn(1, 5) * 1000L
 
         playerView = VLCVideoLayout(this).apply {
@@ -285,10 +297,12 @@ class PlayerActivity : Activity() {
             "--file-caching=1500"
         )
         try {
-            libVLC = LibVLC(this, options)
-            player = MediaPlayer(libVLC).also { active ->
+            val vlc = LibVLC(this, options)
+            libVLC = vlc
+            player = MediaPlayer(vlc).also { active ->
                 active.setEventListener(playerEventListener)
                 active.attachViews(playerView, null, false, false)
+                applyAspectRatio()
             }
             startPlayback(null)
         } catch (error: Exception) {
@@ -313,7 +327,8 @@ class PlayerActivity : Activity() {
 
         try {
             activePlayer.stop()
-            val media = Media(libVLC, android.net.Uri.parse(currentUrl))
+            val vlc = libVLC ?: return
+            val media = Media(vlc, android.net.Uri.parse(currentUrl))
             media.addOption(":http-user-agent=MyPlayer/1.0 (Android TV)")
             media.addOption(":network-caching=1500")
             media.addOption(":live-caching=1500")
@@ -371,7 +386,8 @@ class PlayerActivity : Activity() {
         retryAttempt++
         recoveryPending = true
         handler.removeCallbacks(retryPlayback)
-        retryPositionMs = if (reconnectAtLiveEdge) null else resumePositionMs
+        retryPositionMs = if (reconnectAtLiveEdge) null
+            else resumePositionMs ?: player?.time?.coerceAtLeast(0L)
         buffering = true
         bufferingStartedRealtime = SystemClock.elapsedRealtime()
         android.util.Log.w(
@@ -532,12 +548,50 @@ class PlayerActivity : Activity() {
         dialog?.window?.setBackgroundDrawableResource(android.R.color.black)
     }
 
+    private fun applyAspectRatio() {
+        when (prefs.getString("aspect_ratio", "fit")) {
+            "fill" -> {
+                player?.setAspectRatio("16:9")
+                player?.setScale(0f)
+            }
+            "zoom" -> {
+                player?.setAspectRatio(null)
+                player?.setScale(1.2f)
+            }
+            else -> {
+                player?.setAspectRatio(null)
+                player?.setScale(0f)
+            }
+        }
+    }
+
+    private fun applySavedAudioPreference() {
+        val preferred = prefs.getString("audio_track_language", "").orEmpty()
+        if (preferred.isBlank()) return
+        val active = player ?: return
+        val tracks = active.audioTracks ?: return
+        val match = tracks.firstOrNull { track ->
+            val name = track.name.orEmpty().lowercase(Locale.ROOT)
+            when (preferred) {
+                "Hindi" -> "hindi" in name || "hin" in name
+                "Marathi" -> "marathi" in name || "mar" in name
+                "Gujarati" -> "gujarati" in name || "guj" in name
+                "English" -> "english" in name || "eng" in name
+                else -> false
+            }
+        }
+        if (match != null && active.audioTrack != match.id) {
+            active.setAudioTrack(match.id)
+        }
+    }
+
     private fun showAspectRatioMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
         menu.menu.add("Fit").setOnMenuItemClickListener {
             player?.setAspectRatio(null)
             player?.setScale(0f)
             prefs.edit().putString("aspect_ratio", "fit").apply()
+            applyAspectRatio()
             showControls()
             true
         }
@@ -545,6 +599,7 @@ class PlayerActivity : Activity() {
             player?.setAspectRatio("16:9")
             player?.setScale(0f)
             prefs.edit().putString("aspect_ratio", "fill").apply()
+            applyAspectRatio()
             showControls()
             true
         }
@@ -552,6 +607,7 @@ class PlayerActivity : Activity() {
             player?.setAspectRatio(null)
             player?.setScale(1.2f)
             prefs.edit().putString("aspect_ratio", "zoom").apply()
+            applyAspectRatio()
             showControls()
             true
         }
