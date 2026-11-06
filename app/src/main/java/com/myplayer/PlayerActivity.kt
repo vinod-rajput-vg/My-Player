@@ -924,6 +924,12 @@ private fun showAspectRatioMenu(anchor: View) {
     @Suppress("DEPRECATION")
     override fun onBackPressed() { finishAffinity() }
 
+    override fun onStart() {
+        super.onStart()
+        handler.removeCallbacks(playbackStallMonitor)
+        if (!playbackReleased) handler.postDelayed(playbackStallMonitor, 5_000L)
+    }
+
     override fun onStop() {
         // Keep the player instance so returning to this activity does not leave a blank surface.
         // Pause playback while the activity is not visible; release it in onDestroy.
