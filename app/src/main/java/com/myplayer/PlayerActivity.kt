@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -62,14 +63,59 @@ class PlayerActivity : Activity() {
     private var playbackReleased = false
     private var isTsStream = false
     private var retryFromBeginning = false
+    private var retryPositionMs: Long? = null
+    private var recoveryPending = false
+    private var lastObservedPosition = C.TIME_UNSET
+    private var lastProgressRealtime = 0L
+    private var bufferingStartedRealtime = 0L
     private var audioPreferenceApplied = false
     private val retryPlayback = Runnable {
+        recoveryPending = false
         val activePlayer = player ?: return@Runnable
         if (playbackReleased || isFinishing || isDestroyed) return@Runnable
         if (retryFromBeginning) activePlayer.seekToDefaultPosition()
+        else retryPositionMs?.let { activePlayer.seekTo(it) }
         retryFromBeginning = false
+        retryPositionMs = null
+        lastObservedPosition = C.TIME_UNSET
+        lastProgressRealtime = SystemClock.elapsedRealtime()
+        bufferingStartedRealtime = 0L
         activePlayer.prepare()
         activePlayer.playWhenReady = true
+    }
+
+    // Detect stalls that do not produce a Media3 playback error.
+    private val playbackStallMonitor = object : Runnable {
+        override fun run() {
+            val activePlayer = player ?: return
+            if (playbackReleased || isFinishing || isDestroyed) return
+
+            val now = SystemClock.elapsedRealtime()
+            if (!activePlayer.playWhenReady ||
+                activePlayer.playbackState == Player.STATE_IDLE ||
+                activePlayer.playbackState == Player.STATE_ENDED
+            ) {
+                lastObservedPosition = C.TIME_UNSET
+                lastProgressRealtime = 0L
+                bufferingStartedRealtime = 0L
+            } else if (activePlayer.playbackState == Player.STATE_BUFFERING) {
+                if (bufferingStartedRealtime == 0L) bufferingStartedRealtime = now
+                if (now - bufferingStartedRealtime >= 45_000L) {
+                    recoverStalledPlayback(activePlayer, "buffering timeout")
+                }
+            } else if (activePlayer.playbackState == Player.STATE_READY) {
+                bufferingStartedRealtime = 0L
+                val position = activePlayer.currentPosition
+                if (lastObservedPosition == C.TIME_UNSET || position > lastObservedPosition + 250L) {
+                    lastObservedPosition = position
+                    lastProgressRealtime = now
+                } else if (lastProgressRealtime > 0L && now - lastProgressRealtime >= 20_000L) {
+                    recoverStalledPlayback(activePlayer, "playback position stopped advancing")
+                }
+            }
+
+            handler.postDelayed(this, 5_000L)
+        }
     }
     private val resetRetryCounter = Runnable { retryAttempt = 0 }
     private val progressUpdater = object : Runnable {
@@ -312,9 +358,11 @@ class PlayerActivity : Activity() {
                     }
 
                     handler.removeCallbacks(retryPlayback)
+                    recoveryPending = false
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable && retryAttempt < maxAutoRetries && !playbackReleased) {
                         retryAttempt++
+                        recoveryPending = true
                         // Reconnect immediately once, then back off to avoid hammering a failed endpoint.
                         handler.postDelayed(retryPlayback, retryDelayMs(retryAttempt))
                     }
@@ -348,9 +396,11 @@ handler.removeCallbacks(resetRetryCounter)
                     // Re-open the same URL immediately while playback is still requested.
                     if (playbackState == Player.STATE_ENDED && isTsStream && exo.playWhenReady && !playbackReleased) {
                         handler.removeCallbacks(retryPlayback)
+                        recoveryPending = false
                         retryFromBeginning = true
                         if (retryAttempt < maxAutoRetries) {
                             retryAttempt++
+                            recoveryPending = true
                             handler.postDelayed(retryPlayback, retryDelayMs(retryAttempt))
                         }
                     }
@@ -405,6 +455,8 @@ showControls()
         // Show controls on entry and place the initial TV-remote focus on the timeline.
         showControls()
         timeline.requestFocus()
+        handler.removeCallbacks(playbackStallMonitor)
+        handler.postDelayed(playbackStallMonitor, 5_000L)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -498,6 +550,23 @@ showControls()
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun recoverStalledPlayback(activePlayer: ExoPlayer, reason: String) {
+        if (recoveryPending || retryAttempt >= maxAutoRetries || playbackReleased) return
+
+        retryAttempt++
+        recoveryPending = true
+        handler.removeCallbacks(retryPlayback)
+        retryFromBeginning = activePlayer.isCurrentMediaItemLive || isTsStream
+        retryPositionMs = if (retryFromBeginning) null else activePlayer.currentPosition.coerceAtLeast(0L)
+        lastProgressRealtime = SystemClock.elapsedRealtime()
+        bufferingStartedRealtime = 0L
+        android.util.Log.w(
+            "MyPlayerDASH",
+            "Playback stall detected ($reason); scheduling recovery attempt $retryAttempt/$maxAutoRetries"
+        )
+        handler.postDelayed(retryPlayback, retryDelayMs(retryAttempt))
     }
 
     private fun retryDelayMs(attempt: Int): Long =
@@ -861,6 +930,8 @@ private fun showAspectRatioMenu(anchor: View) {
         handler.removeCallbacks(hideControls)
         handler.removeCallbacks(progressUpdater)
         handler.removeCallbacks(retryPlayback)
+        handler.removeCallbacks(playbackStallMonitor)
+        recoveryPending = false
         player?.pause()
         super.onStop()
     }
