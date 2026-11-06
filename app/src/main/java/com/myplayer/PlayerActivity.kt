@@ -362,6 +362,9 @@ class PlayerActivity : Activity() {
                     val retryable = isRetryablePlaybackError(error)
                     if (retryable && retryAttempt < maxAutoRetries && !playbackReleased) {
                         retryAttempt++
+                        // Live streams must reconnect at the current live window, not an old position.
+                        retryFromBeginning = exo.isCurrentMediaItemLive || isTsStream
+                        retryPositionMs = null
                         recoveryPending = true
                         // Reconnect immediately once, then back off to avoid hammering a failed endpoint.
                         handler.postDelayed(retryPlayback, retryDelayMs(retryAttempt))
