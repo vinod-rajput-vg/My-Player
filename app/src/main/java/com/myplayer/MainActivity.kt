@@ -10,7 +10,6 @@ import android.graphics.Typeface
 class MainActivity : Activity() {
     private val bg = Color.rgb(8, 10, 13)
     private val cardColor = Color.rgb(20, 24, 30)
-    private val accent = Color.rgb(85, 213, 242)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,24 +18,9 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(24), dp(28), dp(32))
+            setPadding(dp(16), dp(12), dp(16), dp(16))
         }
         scroll.addView(body)
-        body.addView(TextView(this).apply {
-            text = "MY PLAYER"
-            setTextColor(accent); textSize = 13f; letterSpacing = .18f
-            typeface = Typeface.DEFAULT_BOLD
-        })
-        body.addView(TextView(this).apply {
-            text = "Settings"; setTextColor(Color.WHITE); textSize = 30f
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            setPadding(0, dp(5), 0, dp(4))
-        })
-        body.addView(TextView(this).apply {
-            text = "Configure your playback experience"
-            setTextColor(0xFF9BA6B2.toInt()); textSize = 14f
-            setPadding(0, 0, 0, dp(22))
-        })
         addChoice(body, "Controls auto-hide", listOf("1 second", "2 seconds", "3 seconds"),
             (PlayerSettings.hideDelay(this) - 1).coerceIn(0, 2)) {
             PlayerSettings.setHideDelay(this, it + 1)
@@ -57,11 +41,6 @@ class MainActivity : Activity() {
             listOf("Fill", "Fit", "Zoom").indexOf(PlayerSettings.aspectRatio(this)).coerceAtLeast(0)) {
             PlayerSettings.setAspectRatio(this, listOf("Fill", "Fit", "Zoom")[it])
         }
-        body.addView(TextView(this).apply {
-            text = "My Player  •  Version 1.0.0"
-            setTextColor(0xFF9BA6B2.toInt()); textSize = 12f
-            setPadding(0, dp(26), 0, 0)
-        })
         setContentView(scroll)
     }
 
