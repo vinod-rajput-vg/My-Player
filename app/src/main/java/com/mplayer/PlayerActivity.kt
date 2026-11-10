@@ -177,8 +177,8 @@ class PlayerActivity : Activity() {
         playerView.player = player
         playerView.resizeMode = when (PlayerSettings.aspectRatio(this)) {
             "Fit" -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-            "Zoom", "Fill" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            "Zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            else -> AspectRatioFrameLayout.RESIZE_MODE_FILL
         }
     }
 
