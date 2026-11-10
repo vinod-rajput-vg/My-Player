@@ -90,7 +90,7 @@ class PlayerActivity : Activity() {
         root.addView(playerView, FrameLayout.LayoutParams(-1, -1))
 
         status = TextView(this).apply {
-            text = "Loading stream..."
+            text = ""
             textSize = 16f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
