@@ -15,8 +15,6 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import java.net.HttpURLConnection
-import java.net.URL
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DefaultHttpDataSource
 import android.graphics.Color
@@ -98,6 +96,13 @@ class PlayerActivity : Activity() {
             gravity = Gravity.CENTER
             visibility = View.VISIBLE
         }
+        status = TextView(this).apply {
+            text = "Loading stream…"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            visibility = View.VISIBLE
+        }
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
 
         controls = LinearLayout(this).apply {
@@ -141,49 +146,9 @@ class PlayerActivity : Activity() {
     }
 
     private fun resolveRedirectAndPlay(uri: Uri) {
-        status.text = "Resolving stream…"
-        Thread {
-            var connection: HttpURLConnection? = null
-            try {
-                val resolved = if (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) {
-                    val activeConnection = URL(uri.toString()).openConnection() as HttpURLConnection
-                    connection = activeConnection
-                    activeConnection.apply {
-                        instanceFollowRedirects = true
-                        connectTimeout = 15000
-                        readTimeout = 15000
-                        requestMethod = "GET"
-                        setRequestProperty("User-Agent", "My Player/1.0.0")
-                        setRequestProperty("Accept", "*/*")
-                        connect()
-                    }
-                    val responseCode = activeConnection.responseCode
-                    if (responseCode !in 200..299) {
-                        throw IllegalStateException("Link returned HTTP $responseCode")
-                    }
-                    val finalUrl = activeConnection.url.toString()
-                    val contentType = activeConnection.contentType.orEmpty()
-                    Pair(Uri.parse(finalUrl), contentType)
-                } else {
-                    Pair(uri, "")
-                }
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed) {
-                        initializePlayer(resolved.first, resolved.second)
-                    }
-                }
-            } catch (error: Exception) {
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed) {
-                        status.text = "Unable to open link\n${error.message ?: "Network error"}"
-                        status.visibility = View.VISIBLE
-                        showControls()
-                    }
-                }
-            } finally {
-                connection?.disconnect()
-            }
-        }.start()
+        // Let Media3 follow HTTP 3xx redirects itself. This preserves redirect
+        // headers/cookies and lets the HLS parser read the final playlist.
+        initializePlayer(uri, "")
     }
 
     private fun initializePlayer(uri: Uri, contentType: String) {
@@ -204,6 +169,7 @@ class PlayerActivity : Activity() {
             trackSelectionParameters = trackBuilder.build()
             val path = uri.lastPathSegment.orEmpty().lowercase(Locale.ROOT)
             val isHls = path.endsWith(".m3u8") ||
+                path.endsWith(".php") ||
                 contentType.contains("mpegurl", ignoreCase = true) ||
                 contentType.contains("vnd.apple", ignoreCase = true)
             val mediaItem = MediaItem.Builder()
