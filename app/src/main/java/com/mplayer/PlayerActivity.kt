@@ -85,10 +85,6 @@ class PlayerActivity : Activity() {
             setShutterBackgroundColor(Color.BLACK)
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
         }
-        root.addView(playerView, FrameLayout.LayoutParams(-1, -1))
-        status = TextView(this).apply {
-            text = "Loading…"; textSize = 16f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
-        }
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
         controls = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
