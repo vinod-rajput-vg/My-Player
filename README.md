@@ -1,43 +1,38 @@
 # My Player
 
-Version: 1.0.0  
-Application ID: `com.mplayer`
+**Version:** 1.0.0  
+**Application ID:** `com.mplayer`
 
-A standalone external video player for Android / Android TV.
+Standalone Android / Android TV external video player. Opening My Player directly shows its Settings screen only. Other apps pass a media URI with Android `ACTION_VIEW`; My Player handles playback independently.
 
-## Product behavior
-
-- Opening My Player directly shows **Settings only**. It does not show a media library or channel catalogue.
-- Other apps (including My India TV) pass a media URL using an Android VIEW intent. My Player handles the URL and plays it. The calling app only redirects/launches My Player; playback remains entirely in My Player.
-- Full-screen, black video surface with an on-screen timeline similar to the supplied reference.
-- With the timeline focused, D-pad OK toggles play/pause; Left and Right seek backward/forward by the configured interval.
-- Playback controls auto-hide after the configured delay.
-
-## Default preferences
+## Configurable settings and defaults
 
 | Setting | Default | Options |
 |---|---|---|
 | Controls auto-hide | 2 seconds | 1, 2, 3 seconds |
-| Preferred quality | Original | Original, 1080p, 720p |
+| Video quality | Original | Original, 1080p, 720p |
 | Seek interval | 10 seconds | 5, 10, 15 seconds |
-| Preferred audio language | Hindi | Language selection, Hindi default |
-| Aspect ratio | Fill | Fill and player-supported alternatives |
+| Preferred audio | Hindi | Hindi, English, Original |
+| Aspect ratio | Fill | Fill, Fit, Zoom |
 
-Quality selection should select a matching variant when the stream exposes selectable variants; Original means leave the stream at its original/automatic quality. Unsupported quality or audio choices must not be falsely presented as applied.
+## Playback
 
-## Technical direction
+- AndroidX Media3 ExoPlayer with HLS and DASH playback modules.
+- Fullscreen landscape playback surface and bottom timeline.
+- D-pad OK toggles play/pause; Left/Right seek by the configured interval.
+- Auto-hiding controls, elapsed time, duration / LIVE label, buffering and error states.
+- Quality caps are applied when the stream exposes compatible video variants; Original leaves adaptive selection unrestricted.
+- Hindi audio is preferred when an appropriate audio track exists.
+- Settings are persisted locally.
+- External HTTP(S), content and file URIs are accepted by the playback activity.
 
-- Kotlin Android application, application ID `com.mplayer`, versionName `1.0.0`.
-- AndroidX Media3 ExoPlayer for HLS, DASH, and progressive streams as supported by the stream and device.
-- Handle `ACTION_VIEW` / `ACTION_SEND` incoming media URIs, validate supported URI schemes, and show actionable errors for invalid or unsupported links.
-- Persist settings using DataStore.
-- Fullscreen landscape playback with D-pad / remote support and touch controls.
-- Release build and CI validation before publishing.
+## Build
 
-## Playback UX
+The existing `.github/workflows/build.yml` is **unchanged**. It runs `./gradlew clean assembleDebug` and uploads `app/build/outputs/apk/debug/app-debug.apk`.
 
-- Timeline shows current position and duration when available.
-- Buffering indicator, playback error state, retry action, and audio-track selection.
-- Controls fade after the configured delay and reappear on user input.
-- Seek is clamped to valid media bounds; live streams without a seekable window do not expose unsupported seeking.
-- Back exits playback and returns to the launching app when appropriate.
+Requires JDK 17 and Android SDK 35:
+
+```sh
+chmod +x ./gradlew
+./gradlew assembleDebug
+```
