@@ -37,7 +37,7 @@ class PlayerActivity : Activity() {
     private lateinit var totalTime: TextView
     private lateinit var status: TextView
     private val handler = Handler(Looper.getMainLooper())
-    private var controlsVisible = true
+    private var controlsVisible = false
     private var seeking = false
     private val progressTask = object : Runnable {
         override fun run() {
@@ -132,9 +132,9 @@ class PlayerActivity : Activity() {
         row.addView(totalTime)
         controls.addView(row)
         root.addView(controls, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        controls.visibility = View.GONE
         root.setOnClickListener { showControls() }
         setContentView(root)
-        timeline.requestFocus()
         handler.post(progressTask)
     }
 
