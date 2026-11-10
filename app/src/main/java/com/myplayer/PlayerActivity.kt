@@ -15,6 +15,10 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import java.net.HttpURLConnection
+import java.net.URL
+import androidx.media3.common.MimeTypes
+import androidx.media3.datasource.DefaultHttpDataSource
 import android.graphics.Color
 import android.graphics.Typeface
 import androidx.media3.common.MediaItem
@@ -60,7 +64,7 @@ class PlayerActivity : Activity() {
             return
         }
         createPlayerUi()
-        initializePlayer(uri)
+        resolveRedirectAndPlay(uri)
     }
 
     private fun incomingUri(): Uri? {
@@ -84,6 +88,15 @@ class PlayerActivity : Activity() {
             useController = false
             setShutterBackgroundColor(Color.BLACK)
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+        }
+        root.addView(playerView, FrameLayout.LayoutParams(-1, -1))
+
+        status = TextView(this).apply {
+            text = "Resolving stream…"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            visibility = View.VISIBLE
         }
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
 
@@ -127,7 +140,51 @@ class PlayerActivity : Activity() {
         handler.post(progressTask)
     }
 
-    private fun initializePlayer(uri: Uri) {
+    private fun resolveRedirectAndPlay(uri: Uri) {
+        status.text = "Resolving stream…"
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val resolved = if (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) {
+                    connection = (URL(uri.toString()).openConnection() as HttpURLConnection).apply {
+                        instanceFollowRedirects = true
+                        connectTimeout = 15000
+                        readTimeout = 15000
+                        requestMethod = "GET"
+                        setRequestProperty("User-Agent", "My Player/1.0.0")
+                        setRequestProperty("Accept", "*/*")
+                        connect()
+                    }
+                    val responseCode = connection.responseCode
+                    if (responseCode !in 200..299) {
+                        throw IllegalStateException("Link returned HTTP $responseCode")
+                    }
+                    val finalUrl = connection.url.toString()
+                    val contentType = connection.contentType.orEmpty()
+                    Pair(Uri.parse(finalUrl), contentType)
+                } else {
+                    Pair(uri, "")
+                }
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        initializePlayer(resolved.first, resolved.second)
+                    }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        status.text = "Unable to open link\n${error.message ?: "Network error"}"
+                        status.visibility = View.VISIBLE
+                        showControls()
+                    }
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun initializePlayer(uri: Uri, contentType: String) {
         val trackBuilder = TrackSelectionParameters.Builder(this)
         when (PlayerSettings.quality(this)) {
             "1080p" -> trackBuilder.setMaxVideoSize(1920, 1080)
@@ -135,9 +192,23 @@ class PlayerActivity : Activity() {
         }
         val language = PlayerSettings.audioLanguage(this)
         if (language != "und") trackBuilder.setPreferredAudioLanguage(language)
-        player = ExoPlayer.Builder(this).build().apply {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("My Player/1.0.0")
+            .setAllowCrossProtocolRedirects(true)
+        player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                .setDataSourceFactory(httpFactory))
+            .build().apply {
             trackSelectionParameters = trackBuilder.build()
-            setMediaItem(MediaItem.fromUri(uri))
+            val path = uri.lastPathSegment.orEmpty().lowercase(Locale.ROOT)
+            val isHls = path.endsWith(".m3u8") ||
+                contentType.contains("mpegurl", ignoreCase = true) ||
+                contentType.contains("vnd.apple", ignoreCase = true)
+            val mediaItem = MediaItem.Builder()
+                .setUri(uri)
+                .apply { if (isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
+                .build()
+            setMediaItem(mediaItem)
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     status.visibility = if (playbackState == Player.STATE_BUFFERING) View.VISIBLE else View.GONE
