@@ -4,6 +4,8 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application
         android:allowBackup="false"
+        android:icon="@drawable/my_player_icon"
+        android:banner="@drawable/my_player_banner"
         android:label="My Player"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
