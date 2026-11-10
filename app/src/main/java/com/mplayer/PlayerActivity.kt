@@ -233,7 +233,6 @@ class PlayerActivity : Activity() {
     }
 
     private fun hideControls() {
-        if (timeline.hasFocus() || playPause.hasFocus()) return
         controlsVisible = false
         controls.visibility = View.GONE
     }
