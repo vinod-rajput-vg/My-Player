@@ -30,7 +30,6 @@ class PlayerActivity : Activity() {
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
     private lateinit var controls: LinearLayout
-    private lateinit var playPause: TextView
     private lateinit var timeline: SeekBar
     private lateinit var currentTime: TextView
     private lateinit var totalTime: TextView
@@ -93,23 +92,9 @@ class PlayerActivity : Activity() {
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
         controls = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(16), dp(28), dp(18))
-            setBackgroundColor(0xB0000000.toInt())
+            setPadding(dp(28), dp(8), dp(28), dp(12))
+            setBackgroundColor(Color.TRANSPARENT)
         }
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        playPause = TextView(this).apply {
-            text = "Ⅱ  Pause"; textSize = 18f; setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            isFocusable = true; isFocusableInTouchMode = true
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            setOnClickListener { togglePlayback() }
-        }
-        actions.addView(playPause)
-        actions.addView(TextView(this).apply {
-            text = "   OK  Play / Pause     ◀ ▶  Seek"
-            textSize = 13f; setTextColor(0xFFBFC7CE.toInt()); gravity = Gravity.CENTER_VERTICAL
-        })
-        controls.addView(actions)
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         currentTime = timeText("00:00")
         totalTime = timeText("00:00")
@@ -162,7 +147,6 @@ class PlayerActivity : Activity() {
                     if (playbackState == Player.STATE_READY) { updateTimeline(); scheduleHide() }
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    playPause.text = if (isPlaying) "Ⅱ  Pause" else "▶  Play"
                     if (isPlaying) status.visibility = View.GONE
                 }
                 override fun onPlayerError(error: PlaybackException) {
