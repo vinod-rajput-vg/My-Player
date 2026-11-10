@@ -4,7 +4,7 @@ import android.content.Context
 
 object PlayerSettings {
     private const val PREFS = "my_player_settings"
-    fun hideDelay(context: Context) = prefs(context).getInt("hide_delay", 2)
+    fun hideDelay(context: Context) = prefs(context).getInt("hide_delay", 3)
     fun quality(context: Context) = prefs(context).getString("quality", "Original") ?: "Original"
     fun seekSeconds(context: Context) = prefs(context).getInt("seek_seconds", 10)
     fun audioLanguage(context: Context) = prefs(context).getString("audio_language", "hi") ?: "hi"
