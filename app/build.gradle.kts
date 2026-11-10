@@ -3,10 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 android {
-    namespace = "com.mplayer"
+    namespace = "com.myplayer"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.mplayer"
+        applicationId = "com.myplayer"
         minSdk = 23
         targetSdk = 35
         versionCode = 1
