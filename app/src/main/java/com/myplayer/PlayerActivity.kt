@@ -146,7 +146,9 @@ class PlayerActivity : Activity() {
             var connection: HttpURLConnection? = null
             try {
                 val resolved = if (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) {
-                    connection = (URL(uri.toString()).openConnection() as HttpURLConnection).apply {
+                    val activeConnection = URL(uri.toString()).openConnection() as HttpURLConnection
+                    connection = activeConnection
+                    activeConnection.apply {
                         instanceFollowRedirects = true
                         connectTimeout = 15000
                         readTimeout = 15000
@@ -155,12 +157,12 @@ class PlayerActivity : Activity() {
                         setRequestProperty("Accept", "*/*")
                         connect()
                     }
-                    val responseCode = connection.responseCode
+                    val responseCode = activeConnection.responseCode
                     if (responseCode !in 200..299) {
                         throw IllegalStateException("Link returned HTTP $responseCode")
                     }
-                    val finalUrl = connection.url.toString()
-                    val contentType = connection.contentType.orEmpty()
+                    val finalUrl = activeConnection.url.toString()
+                    val contentType = activeConnection.contentType.orEmpty()
                     Pair(Uri.parse(finalUrl), contentType)
                 } else {
                     Pair(uri, "")
